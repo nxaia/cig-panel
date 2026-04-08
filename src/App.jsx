@@ -9,6 +9,10 @@ const supabase =
     : null;
 
 const PLANOS_BUCKET = "planos-expedientes";
+const PLANOS_TABLE = "expediente_planos";
+const MAX_PLANO_FILE_SIZE_MB = 15;
+const ALLOWED_PLANO_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg"];
+const ALLOWED_PLANO_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp"];
 
 const C = {
   bg: "#f5f7fa",
@@ -286,6 +290,74 @@ function truncateText(value, max = 70) {
   return `${text.slice(0, max)}…`;
 }
 
+function getFileExtension(fileName) {
+  return String(fileName || "").split(".").pop()?.toLowerCase() || "";
+}
+
+function isAllowedPlanoFile(file) {
+  if (!file) return false;
+  const extension = getFileExtension(file.name);
+  return ALLOWED_PLANO_MIME_TYPES.includes(file.type) || ALLOWED_PLANO_EXTENSIONS.includes(extension);
+}
+
+function formatFileSize(bytes) {
+  const size = Number(bytes || 0);
+  if (!size) return "—";
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function buildPlanoPublicUrl(filePath) {
+  if (!supabase || !filePath) return "";
+  const { data } = supabase.storage.from(PLANOS_BUCKET).getPublicUrl(filePath);
+  return data?.publicUrl || "";
+}
+
+function normalizePlanoRecord(row) {
+  if (!row) return null;
+  const path = row.archivo_path || row.path || row.plano_path || "";
+  return {
+    id: row.id,
+    expedienteId: row.expediente_id,
+    archivoPath: path,
+    nombreOriginal: row.nombre_original || row.nombre || path.split("/").pop() || "Archivo",
+    tipoMime: row.tipo_mime || "",
+    tamanoBytes: Number(row.tamano_bytes || 0),
+    createdAt: row.created_at || null,
+    uploadedBy: row.uploaded_by || null,
+    publicUrl: row.public_url || buildPlanoPublicUrl(path),
+  };
+}
+
+function buildPlanosIndex(rows) {
+  const index = {};
+  for (const row of rows || []) {
+    const normalized = normalizePlanoRecord(row);
+    if (!normalized?.expedienteId) continue;
+    if (!index[normalized.expedienteId]) index[normalized.expedienteId] = [];
+    index[normalized.expedienteId].push(normalized);
+  }
+
+  Object.keys(index).forEach((key) => {
+    index[key].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  });
+
+  return index;
+}
+
+async function fetchPlanosIndex(expedienteIds = []) {
+  if (!supabase || !Array.isArray(expedienteIds) || expedienteIds.length === 0) return { data: {}, error: null };
+
+  const { data, error } = await supabase
+    .from(PLANOS_TABLE)
+    .select("id, expediente_id, archivo_path, nombre_original, tipo_mime, tamano_bytes, created_at, uploaded_by")
+    .in("expediente_id", expedienteIds)
+    .order("created_at", { ascending: false });
+
+  if (error) return { data: {}, error };
+  return { data: buildPlanosIndex(data || []), error: null };
+}
+
 function normalizeExpediente(row) {
   return {
     id: row.id,
@@ -296,7 +368,8 @@ function normalizeExpediente(row) {
     barrio: row.barrio || "",
     estadoCivil: row.estado_civil || "",
     padronNumero: row.padron_numero || "",
-    planoUrl: row.plano_url || "",
+    planoUrl: row.plano_url || (row.plano_path ? buildPlanoPublicUrl(row.plano_path) : ""),
+    planoPath: row.plano_path || "",
     estado: row.estado || "pendiente",
     area: row.area_actual || "",
     resp: row.responsable_id || "",
@@ -308,6 +381,7 @@ function normalizeExpediente(row) {
     notas: row.notas || "",
     editableTecnico: row.editable_tecnico ?? true,
     origenCarga: row.origen_carga || "manual",
+    createdAt: row.created_at || null,
   };
 }
 
@@ -320,6 +394,7 @@ function buildUpdatePayload(partial) {
   if (Object.prototype.hasOwnProperty.call(partial, "estadoCivil")) payload.estado_civil = cleanText(partial.estadoCivil);
   if (Object.prototype.hasOwnProperty.call(partial, "padronNumero")) payload.padron_numero = cleanText(partial.padronNumero);
   if (Object.prototype.hasOwnProperty.call(partial, "planoUrl")) payload.plano_url = cleanText(partial.planoUrl);
+  if (Object.prototype.hasOwnProperty.call(partial, "planoPath")) payload.plano_path = cleanText(partial.planoPath);
   if (Object.prototype.hasOwnProperty.call(partial, "estado")) payload.estado = partial.estado;
   if (Object.prototype.hasOwnProperty.call(partial, "area")) payload.area_actual = partial.area;
   if (Object.prototype.hasOwnProperty.call(partial, "resp")) payload.responsable_id = partial.resp || null;
@@ -782,7 +857,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
   );
 }
 
-function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, uploadingPlano, canEdit, onDelete }) {
+function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, uploadingPlano, canEdit, onDelete, planos = [] }) {
   const [draft, setDraft] = useState(item || null);
 
   useEffect(() => {
@@ -794,6 +869,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
   const zona = splitBarrio(draft.barrio);
   const saving = savingField === String(draft.id);
   const barrios = BARRIOS[zona.localidad || "Banda del Río Salí"] || ALL_BARRIOS;
+  const latestPlano = planos[0] || null;
 
   const updateField = (field, value) => {
     const next = { ...draft, [field]: value };
@@ -863,11 +939,11 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
             <textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={4} style={{ ...inputStyle, resize: "vertical" }} />
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
-            <div style={labelStyle}>Plano</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <div style={labelStyle}>Planos adjuntos</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12 }}>
               {canEdit ? (
                 <label style={{ ...btnGhost, display: "inline-flex", alignItems: "center", gap: 8, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
-                  {uploadingPlano ? "Subiendo..." : "Subir imagen del plano"}
+                  {uploadingPlano ? "Subiendo..." : "Subir plano (PDF o imagen)"}
                   <input
                     type="file"
                     accept="image/*,.pdf"
@@ -881,8 +957,27 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                   />
                 </label>
               ) : null}
-              {draft.planoUrl ? <a href={draft.planoUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none" }}>Ver plano</a> : <span style={{ color: C.dim, fontSize: 12 }}>Sin archivo</span>}
+              <span style={{ color: C.dim, fontSize: 12 }}>Máximo {MAX_PLANO_FILE_SIZE_MB} MB • JPG, PNG, WEBP o PDF</span>
             </div>
+
+            {latestPlano || draft.planoUrl ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                {(planos.length ? planos : [{ id: `legacy-${draft.id}`, nombreOriginal: draft.planoPath || "Plano cargado", publicUrl: draft.planoUrl, tamanoBytes: 0, createdAt: draft.upd }]).map((plano) => (
+                  <div key={plano.id} style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>{plano.nombreOriginal || "Plano"}</div>
+                      <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
+                        {plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "Archivo adjunto"}
+                        {plano.createdAt ? ` • ${formatDateTime(plano.createdAt)}` : ""}
+                      </div>
+                    </div>
+                    <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none" }}>Ver plano</a>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span style={{ color: C.dim, fontSize: 12 }}>Sin archivos adjuntos</span>
+            )}
           </div>
         </div>
 
@@ -997,7 +1092,7 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
   );
 }
 
-function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlano, uploadingPlano, savingField, canEdit, onDelete }) {
+function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlano, uploadingPlano, savingField, canEdit, onDelete, planos = [] }) {
   const [draft, setDraft] = useState(exp);
 
   useEffect(() => {
@@ -1007,6 +1102,7 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
   const zona = splitBarrio(draft.barrio);
   const saving = savingField === String(draft.id);
   const barrios = BARRIOS[zona.localidad || "Banda del Río Salí"] || ALL_BARRIOS;
+  const latestPlano = planos[0] || null;
 
   const updateField = (field, value) => {
     const next = { ...draft, [field]: value };
@@ -1038,7 +1134,7 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
         </select>
       </td>
       <td style={{ padding: "10px 12px", minWidth: 120 }}><input value={draft.padronNumero} disabled={!canEdit} onChange={(e) => updateField("padronNumero", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "10px 12px", minWidth: 170 }}>
+      <td style={{ padding: "10px 12px", minWidth: 190 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {canEdit ? (
             <label style={{ ...btnGhost, textAlign: "center", padding: "8px 10px", fontSize: 11, color: uploadingPlano ? C.dim : C.text, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
@@ -1056,7 +1152,12 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
               />
             </label>
           ) : null}
-          {draft.planoUrl ? <a href={draft.planoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.sky, fontWeight: 700, textDecoration: "none" }}>Ver plano</a> : <span style={{ fontSize: 11, color: C.dim }}>Sin archivo</span>}
+          {latestPlano || draft.planoUrl ? (
+            <>
+              <a href={(latestPlano?.publicUrl || draft.planoUrl)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.sky, fontWeight: 700, textDecoration: "none" }}>Ver plano</a>
+              <span style={{ fontSize: 11, color: C.dim }}>{planos.length > 1 ? `${planos.length} archivos` : (latestPlano?.nombreOriginal || "1 archivo")}</span>
+            </>
+          ) : <span style={{ fontSize: 11, color: C.dim }}>Sin archivo</span>}
         </div>
       </td>
       <td style={{ padding: "10px 12px", minWidth: 140 }}><div style={{ marginBottom: 8 }}><Badge estado={draft.estado} /></div><select value={draft.estado} disabled={!canEdit} onChange={(e) => updateField("estado", e.target.value)} style={compactInputStyle}>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></td>
@@ -1077,6 +1178,7 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
 export default function App() {
   const [data, setData] = useState([]);
   const [users, setUsers] = useState([]);
+  const [planosByExpediente, setPlanosByExpediente] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeNav, setActiveNav] = useState("Dashboard");
   const [search, setSearch] = useState("");
@@ -1175,9 +1277,26 @@ export default function App() {
     const normalizedRows = (expedientesResult.data || []).map(normalizeExpediente);
     const dedupeResult = dedupeExpedientesForView(normalizedRows);
 
+    const expedienteIds = (expedientesResult.data || []).map((row) => row.id).filter(Boolean);
+    const planosResult = await fetchPlanosIndex(expedienteIds);
+    if (!planosResult.error) {
+      setPlanosByExpediente(planosResult.data || {});
+    }
+
+    const mergedRows = dedupeResult.uniqueRows.map((row) => {
+      const planos = (planosResult.data || {})[row.id] || [];
+      const latestPlano = planos[0] || null;
+      if (!latestPlano) return row;
+      return {
+        ...row,
+        planoPath: latestPlano.archivoPath || row.planoPath || "",
+        planoUrl: latestPlano.publicUrl || row.planoUrl || "",
+      };
+    });
+
     setRawRowCount(dedupeResult.totalRows);
     setHiddenDuplicateCount(dedupeResult.hiddenDuplicates);
-    setData(dedupeResult.uniqueRows);
+    setData(mergedRows);
 
     if (dedupeResult.hiddenDuplicates > 0) {
       setNotice(`Se ocultaron ${dedupeResult.hiddenDuplicates} expedientes duplicados en pantalla. La base no fue modificada.`);
@@ -1242,6 +1361,7 @@ export default function App() {
       estado_civil: cleanText(form.estadoCivil),
       padron_numero: cleanText(form.padronNumero),
       plano_url: "",
+      plano_path: "",
       estado: form.estado,
       area_actual: form.area,
       responsable_id: form.resp || null,
@@ -1288,8 +1408,10 @@ export default function App() {
     }
 
     const normalized = normalizeExpediente(updated);
-    setData((prev) => prev.map((item) => (item.id === expedienteId ? normalized : item)));
-    setModalItem((prev) => (prev && prev.id === expedienteId ? normalized : prev));
+    const latestPlano = (planosByExpediente[expedienteId] || [])[0] || null;
+    const merged = latestPlano ? { ...normalized, planoPath: latestPlano.archivoPath || normalized.planoPath, planoUrl: latestPlano.publicUrl || normalized.planoUrl } : normalized;
+    setData((prev) => prev.map((item) => (item.id === expedienteId ? merged : item)));
+    setModalItem((prev) => (prev && prev.id === expedienteId ? merged : prev));
     setSavingField("");
   }
 
@@ -1309,22 +1431,68 @@ export default function App() {
   async function uploadPlanoFile(expedienteId, file) {
     if (!supabase || !file || !canEdit) return;
 
+    if (!isAllowedPlanoFile(file)) {
+      setError("Formato no permitido. Subí PDF, JPG, PNG o WEBP.");
+      return;
+    }
+
+    if (file.size > MAX_PLANO_FILE_SIZE_MB * 1024 * 1024) {
+      setError(`El archivo supera el límite de ${MAX_PLANO_FILE_SIZE_MB} MB.`);
+      return;
+    }
+
     setUploadingPlanoId(String(expedienteId));
     setError("");
-    const extension = file.name.split(".").pop() || "bin";
-    const safeName = `${Date.now()}-${String(file.name).replace(/[^a-zA-Z0-9_.-]/g, "-")}`;
-    const filePath = `${expedienteId}/${safeName}`;
+    const extension = getFileExtension(file.name) || "bin";
+    const safeBaseName = String(file.name || "archivo")
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^a-zA-Z0-9_-]/g, "-")
+      .replace(/-+/g, "-")
+      .slice(0, 60) || "plano";
+    const filePath = `${expedienteId}/${Date.now()}-${safeBaseName}.${extension}`;
 
-    const { error: uploadError } = await supabase.storage.from(PLANOS_BUCKET).upload(filePath, file, { upsert: true });
+    const { error: uploadError } = await supabase.storage
+      .from(PLANOS_BUCKET)
+      .upload(filePath, file, { upsert: false, contentType: file.type || undefined });
+
     if (uploadError) {
       setError(`No se pudo subir el plano: ${uploadError.message}`);
       setUploadingPlanoId("");
       return;
     }
 
-    const { data: publicData } = supabase.storage.from(PLANOS_BUCKET).getPublicUrl(filePath);
-    const publicUrl = publicData?.publicUrl || "";
-    await persistFieldUpdate(expedienteId, { planoUrl: publicUrl });
+    const publicUrl = buildPlanoPublicUrl(filePath);
+
+    const metadataPayload = {
+      expediente_id: expedienteId,
+      archivo_path: filePath,
+      nombre_original: file.name,
+      tipo_mime: file.type || null,
+      tamano_bytes: file.size || 0,
+      uploaded_by: activeUser?.nombre || null,
+    };
+
+    const { data: insertedPlano, error: planoInsertError } = await supabase
+      .from(PLANOS_TABLE)
+      .insert(metadataPayload)
+      .select("id, expediente_id, archivo_path, nombre_original, tipo_mime, tamano_bytes, created_at, uploaded_by")
+      .single();
+
+    if (planoInsertError) {
+      setError(`El archivo se subió, pero no se pudo registrar en la base: ${planoInsertError.message}`);
+    }
+
+    if (insertedPlano) {
+      const normalizedPlano = normalizePlanoRecord(insertedPlano);
+      setPlanosByExpediente((prev) => ({
+        ...prev,
+        [expedienteId]: [normalizedPlano, ...(prev[expedienteId] || [])],
+      }));
+      setData((prev) => prev.map((item) => (item.id === expedienteId ? { ...item, planoPath: filePath, planoUrl: publicUrl } : item)));
+      setModalItem((prev) => (prev && prev.id === expedienteId ? { ...prev, planoPath: filePath, planoUrl: publicUrl } : prev));
+    }
+
+    await persistFieldUpdate(expedienteId, { planoPath: filePath, planoUrl: publicUrl });
     setUploadingPlanoId("");
     setNotice("Plano subido correctamente.");
   }
@@ -1335,12 +1503,25 @@ export default function App() {
 
     setError("");
     setNotice("");
+
+    const planos = planosByExpediente[item.id] || [];
+    if (planos.length) {
+      const storagePaths = planos.map((plano) => plano.archivoPath).filter(Boolean);
+      if (storagePaths.length) await supabase.storage.from(PLANOS_BUCKET).remove(storagePaths);
+      await supabase.from(PLANOS_TABLE).delete().eq("expediente_id", item.id);
+    }
+
     const { error: deleteError } = await supabase.from("expedientes").delete().eq("id", item.id);
     if (deleteError) {
       setError(`No se pudo eliminar el expediente: ${deleteError.message}`);
       return;
     }
 
+    setPlanosByExpediente((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
     setData((prev) => prev.filter((row) => row.id !== item.id));
     setModalItem((prev) => (prev?.id === item.id ? null : prev));
     setNotice(`Expediente ${item.num} eliminado correctamente.`);
@@ -1439,6 +1620,7 @@ export default function App() {
         estado_civil: cleanText(row.estadoCivil),
         padron_numero: cleanText(row.padronNumero),
         plano_url: "",
+        plano_path: "",
         estado: "revision_inicial",
         area_actual: "Mesa de Entradas",
         responsable_id: null,
@@ -1608,7 +1790,7 @@ export default function App() {
                     <div style={{ marginTop: 10, color: C.muted, fontSize: 13, lineHeight: 1.55 }}>Ya podés subir varios Excel desde el panel. El barrio se toma del nombre del archivo y la carga va directo a Supabase.</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
                       <div style={{ background: C.softBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}><div style={{ fontWeight: 700, fontSize: 13, color: C.indigo }}>Campos nuevos</div><div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>estado_civil<br />telefono<br />padron_numero<br />plano_url<br />notas</div></div>
-                      <div style={{ background: C.softBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}><div style={{ fontWeight: 700, fontSize: 13, color: C.indigo }}>Cobertura actual</div><div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>Con plano: {data.filter((d) => cleanText(d.planoUrl)).length}<br />Con padrón: {data.filter((d) => cleanText(d.padronNumero)).length}<br />Con estado civil: {data.filter((d) => cleanText(d.estadoCivil)).length}<br />Usuarios cargados: {users.length}</div></div>
+                      <div style={{ background: C.softBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}><div style={{ fontWeight: 700, fontSize: 13, color: C.indigo }}>Cobertura actual</div><div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>Con plano: {data.filter((d) => (planosByExpediente[d.id] || []).length > 0 || cleanText(d.planoUrl)).length}<br />Con padrón: {data.filter((d) => cleanText(d.padronNumero)).length}<br />Con estado civil: {data.filter((d) => cleanText(d.estadoCivil)).length}<br />Usuarios cargados: {users.length}</div></div>
                     </div>
                   </div>
                 </div>
@@ -1675,7 +1857,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {slice.length === 0 ? <tr><td colSpan={13}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp) => <ExpedienteRow key={exp.id} exp={exp} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} />)}
+                        {slice.length === 0 ? <tr><td colSpan={13}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp) => <ExpedienteRow key={exp.id} exp={exp} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} />)}
                       </tbody>
                     </table>
                   </div>
@@ -1714,7 +1896,7 @@ export default function App() {
         </div>
       </div>
 
-      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} canEdit={canEdit} onDelete={deleteExpediente} />
+      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} />
       <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} />
     </div>
   );
