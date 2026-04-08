@@ -398,6 +398,42 @@ function getRowsToDeleteByDuplicateRule(rows) {
   return idsToDelete;
 }
 
+function buildFrontendDuplicateSignature(row) {
+  const dni = normalizeDni(row?.dni);
+  if (dni) return `DNI:${dni}`;
+
+  const titular = normalizeComparableText(row?.titular);
+  const padron = normalizePadron(row?.padronNumero);
+  if (titular && padron) return `TP:${titular}__${padron}`;
+
+  const barrio = normalizeComparableText(row?.barrio);
+  if (titular && barrio) return `TB:${titular}__${barrio}`;
+
+  return `ROW:${row?.id ?? Math.random()}`;
+}
+
+function dedupeExpedientesForView(rows) {
+  const seen = new Set();
+  const uniqueRows = [];
+  let hiddenDuplicates = 0;
+
+  for (const row of rows || []) {
+    const signature = buildFrontendDuplicateSignature(row);
+    if (seen.has(signature)) {
+      hiddenDuplicates += 1;
+      continue;
+    }
+    seen.add(signature);
+    uniqueRows.push(row);
+  }
+
+  return {
+    uniqueRows,
+    hiddenDuplicates,
+    totalRows: Array.isArray(rows) ? rows.length : 0,
+  };
+}
+
 function detectLocalidadFromFilename(fileName) {
   const key = normalizeHeader(fileName);
   return key.includes("lastenia") ? "Lastenia" : "Banda del Río Salí";
@@ -1057,6 +1093,8 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [rawRowCount, setRawRowCount] = useState(0);
+  const [hiddenDuplicateCount, setHiddenDuplicateCount] = useState(0);
 
   const [selectedLoginUserId, setSelectedLoginUserId] = useState(LOGIN_USERS[0].id);
   const [activeUser, setActiveUser] = useState(null);
@@ -1072,7 +1110,6 @@ export default function App() {
   const [importFiles, setImportFiles] = useState([]);
   const [importingExcel, setImportingExcel] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
-  const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
   const [sortOrder, setSortOrder] = useState("recent");
 
   const fechaActual = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
@@ -1103,18 +1140,6 @@ export default function App() {
     Object.values(saveTimersRef.current).forEach((timer) => clearTimeout(timer));
   }, []);
 
-  async function cleanupDuplicateExpedientes(rows) {
-    if (!supabase || !canEdit) return { removed: 0 };
-    const idsToDelete = getRowsToDeleteByDuplicateRule(rows);
-    if (!idsToDelete.length) return { removed: 0 };
-
-    setCleaningDuplicates(true);
-    const { error: deleteError } = await supabase.from("expedientes").delete().in("id", idsToDelete);
-    setCleaningDuplicates(false);
-
-    if (deleteError) throw deleteError;
-    return { removed: idsToDelete.length };
-  }
 
   async function loadInitialData(showRefresh = false) {
     if (!supabase) {
@@ -1147,20 +1172,17 @@ export default function App() {
 
     setUsers(usersResult.data || []);
 
-    let sourceRows = expedientesResult.data || [];
-    try {
-      const cleanupResult = await cleanupDuplicateExpedientes(sourceRows);
-      if (cleanupResult.removed > 0) {
-        const refreshed = await supabase.from("expedientes").select("*").order("created_at", { ascending: false });
-        if (refreshed.error) throw refreshed.error;
-        sourceRows = refreshed.data || [];
-        setNotice(`Se eliminaron ${cleanupResult.removed} expedientes repetidos automáticamente.`);
-      }
-    } catch (cleanupError) {
-      setError(`No se pudieron depurar duplicados: ${cleanupError.message}`);
+    const normalizedRows = (expedientesResult.data || []).map(normalizeExpediente);
+    const dedupeResult = dedupeExpedientesForView(normalizedRows);
+
+    setRawRowCount(dedupeResult.totalRows);
+    setHiddenDuplicateCount(dedupeResult.hiddenDuplicates);
+    setData(dedupeResult.uniqueRows);
+
+    if (dedupeResult.hiddenDuplicates > 0) {
+      setNotice(`Se ocultaron ${dedupeResult.hiddenDuplicates} expedientes duplicados en pantalla. La base no fue modificada.`);
     }
 
-    setData(sourceRows.map(normalizeExpediente));
     setLoading(false);
     setRefreshing(false);
   }
@@ -1553,7 +1575,6 @@ export default function App() {
           <main style={{ flex: 1, padding: "20px 24px", maxWidth: 1500, width: "100%", boxSizing: "border-box" }}>
             {error ? <div style={{ marginBottom: 16, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{error}</div> : null}
             {notice ? <div style={{ marginBottom: 16, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{notice}</div> : null}
-            {cleaningDuplicates ? <div style={{ marginBottom: 16, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>Depurando expedientes repetidos...</div> : null}
             {accessSyncStyle ? <div style={{ ...accessSyncStyle, marginBottom: 16, borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{accessSyncStatus.text}</div> : null}
             {!canEdit ? <div style={{ marginBottom: 16, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>Usuario en modo solo lectura. Este perfil no puede crear, editar, importar ni eliminar expedientes.</div> : null}
 
@@ -1562,7 +1583,7 @@ export default function App() {
             ) : activeNav === "Dashboard" ? (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
-                  {[["Total expedientes", stats.total, "Base operativa actual"], ["En proceso", stats.proceso, "Seguimiento activo"], ["Casos críticos", stats.criticos, "Prioridad crítica"], ["Atrasados (+14d)", stats.atrasados, "Requieren revisión"]].map(([label, value, note]) => (
+                  {[["Expedientes únicos", stats.total, "Mostrados en el panel"], ["En proceso", stats.proceso, "Seguimiento activo"], ["Casos críticos", stats.criticos, "Prioridad crítica"], ["Atrasados (+14d)", stats.atrasados, "Requieren revisión"]].map(([label, value, note]) => (
                     <div key={label} style={{ background: "#fff", border: `1px solid ${C.border}`, padding: "14px 18px", borderRadius: 16 }}>
                       <div style={{ fontSize: 11, color: C.muted }}>{label}</div>
                       <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}>{value}</div>
@@ -1660,7 +1681,7 @@ export default function App() {
                   </div>
 
                   <div style={{ padding: "12px 18px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 12, color: C.muted }}>Mostrando {filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} a {Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length} registros • Página {currentPage} de {totalPages}</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>Mostrando {filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} a {Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length} registros únicos • Filas totales en base: {rawRowCount} • Duplicados ocultos: {hiddenDuplicateCount} • Página {currentPage} de {totalPages}</div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <button onClick={() => setPage(1)} style={btnGhost} disabled={currentPage === 1}>Primera</button>
                       <button onClick={() => setPage((p) => Math.max(1, p - 1))} style={btnGhost} disabled={currentPage === 1}>Anterior</button>
