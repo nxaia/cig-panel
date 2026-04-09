@@ -870,7 +870,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
   );
 }
 
-function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, uploadingPlano, canEdit, onDelete, planos = [] }) {
+function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [] }) {
   const [draft, setDraft] = useState(item || null);
 
   useEffect(() => {
@@ -984,7 +984,27 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                         {plano.createdAt ? ` • ${formatDateTime(plano.createdAt)}` : ""}
                       </div>
                     </div>
-                    <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none" }}>Ver plano</a>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                      <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none" }}>Ver plano</a>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => onDeletePlano(draft.id, plano)}
+                          disabled={deletingPlanoId === String(plano.id)}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            color: C.red,
+                            fontWeight: 700,
+                            cursor: deletingPlanoId === String(plano.id) ? "not-allowed" : "pointer",
+                            opacity: deletingPlanoId === String(plano.id) ? 0.6 : 1,
+                            padding: 0,
+                          }}
+                        >
+                          {deletingPlanoId === String(plano.id) ? "Eliminando..." : "Eliminar"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1220,6 +1240,7 @@ export default function App() {
 
   const [savingField, setSavingField] = useState("");
   const [uploadingPlanoId, setUploadingPlanoId] = useState("");
+  const [deletingPlanoId, setDeletingPlanoId] = useState("");
   const saveTimersRef = useRef({});
 
   const [importFiles, setImportFiles] = useState([]);
@@ -1556,6 +1577,67 @@ export default function App() {
       setUploadingPlanoId("");
     }
   }
+  async function deletePlanoFile(expedienteId, plano) {
+    if (!supabase || !canEdit || !expedienteId || !plano?.id) return;
+
+    const ok = window.confirm(`¿Eliminar el plano "${plano.nombreOriginal || "archivo"}"?`);
+    if (!ok) return;
+
+    setDeletingPlanoId(String(plano.id));
+    setError("");
+    setNotice("");
+
+    try {
+      if (plano.archivoPath) {
+        const { error: storageError } = await supabase.storage
+          .from(PLANOS_BUCKET)
+          .remove([plano.archivoPath]);
+
+        if (storageError) {
+          throw new Error(`No se pudo eliminar el archivo del storage: ${storageError.message}`);
+        }
+      }
+
+      const { error: deletePlanoError } = await supabase
+        .from(PLANOS_TABLE)
+        .delete()
+        .eq("id", plano.id);
+
+      if (deletePlanoError) {
+        throw new Error(`No se pudo eliminar el registro del plano: ${deletePlanoError.message}`);
+      }
+
+      const planosRefresh = await refreshPlanosForExpediente(expedienteId);
+      if (planosRefresh.error) {
+        throw new Error(`El plano se eliminó, pero no se pudo refrescar la lista: ${planosRefresh.error.message}`);
+      }
+
+      const latestPlano = (planosRefresh.data || [])[0] || null;
+      const nextPath = latestPlano?.archivoPath || "";
+      const nextUrl = latestPlano?.publicUrl || "";
+
+      const { data: updatedExpediente, error: expedienteUpdateError } = await applyExpedientePlanoUpdate(expedienteId, nextPath, nextUrl);
+      if (expedienteUpdateError) {
+        throw new Error(`El plano se eliminó, pero no se pudo actualizar el expediente: ${expedienteUpdateError.message}`);
+      }
+
+      const normalizedExpediente = normalizeExpediente(updatedExpediente);
+      const mergedExpediente = {
+        ...normalizedExpediente,
+        planoPath: nextPath,
+        planoUrl: nextUrl,
+      };
+
+      setData((prev) => prev.map((item) => (item.id === expedienteId ? mergedExpediente : item)));
+      setModalItem((prev) => (prev && prev.id === expedienteId ? mergedExpediente : prev));
+      setNotice("Plano eliminado correctamente.");
+    } catch (err) {
+      setError(err.message || "No se pudo eliminar el plano.");
+    } finally {
+      setDeletingPlanoId("");
+    }
+  }
+
   async function deleteExpediente(item) {
     if (!supabase || !canEdit || !item?.id) return;
     const ok = window.confirm(`¿Eliminar el expediente ${item.num}? Esta acción no se puede deshacer.`);
@@ -1956,7 +2038,7 @@ export default function App() {
         </div>
       </div>
 
-      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} />
+      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} />
       <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} />
     </div>
   );
