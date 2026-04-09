@@ -1187,27 +1187,42 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
           ) : null}
           {latestPlano || draft.planoUrl ? (
             <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <label style={{ ...btnGhost, textAlign: "center", padding: "6px 10px", fontSize: 11, color: uploadingPlano ? C.dim : C.text, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
+                  {uploadingPlano ? "Reemplazando..." : "Reemplazar plano"}
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    style={{ display: "none" }}
+                    disabled={uploadingPlano}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) onUploadPlano(draft.id, file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => onDeletePlano(draft.id, latestPlano || { id: `legacy-${draft.id}`, archivoPath: draft.planoPath, nombreOriginal: draft.planoPath || "Plano", publicUrl: draft.planoUrl })}
+                    disabled={deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id)}
+                    style={{
+                      ...btnGhost,
+                      padding: "6px 10px",
+                      fontSize: 11,
+                      color: C.red,
+                      borderColor: "#fecaca",
+                      cursor: deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? "not-allowed" : "pointer",
+                      opacity: deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? 0.6 : 1,
+                    }}
+                  >
+                    {deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? "Eliminando..." : "Eliminar plano"}
+                  </button>
+                ) : null}
+              </div>
               <a href={(latestPlano?.publicUrl || draft.planoUrl)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.sky, fontWeight: 700, textDecoration: "none" }}>Ver plano</a>
               <span style={{ fontSize: 11, color: C.dim }}>{planos.length > 1 ? `${planos.length} archivos` : (latestPlano?.nombreOriginal || "1 archivo")}</span>
-              {canEdit ? (
-                <button
-                  type="button"
-                  onClick={() => onDeletePlano(draft.id, latestPlano || { id: `legacy-${draft.id}`, archivoPath: draft.planoPath, nombreOriginal: draft.planoPath || "Plano", publicUrl: draft.planoUrl })}
-                  disabled={deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id)}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: C.red,
-                    fontWeight: 700,
-                    cursor: deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? "not-allowed" : "pointer",
-                    opacity: deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? 0.6 : 1,
-                    padding: 0,
-                    fontSize: 11,
-                  }}
-                >
-                  {deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? "Eliminando..." : "Eliminar plano"}
-                </button>
-              ) : null}
             </>
           ) : <span style={{ fontSize: 11, color: C.dim }}>Sin archivo</span>}
         </div>
