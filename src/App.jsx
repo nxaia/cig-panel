@@ -990,18 +990,18 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                         <button
                           type="button"
                           onClick={() => onDeletePlano(draft.id, plano)}
-                          disabled={deletingPlanoId === String(plano.id)}
+                          disabled={deletingPlanoId === String(plano.id || draft.id)}
                           style={{
                             border: "none",
                             background: "transparent",
                             color: C.red,
                             fontWeight: 700,
-                            cursor: deletingPlanoId === String(plano.id) ? "not-allowed" : "pointer",
-                            opacity: deletingPlanoId === String(plano.id) ? 0.6 : 1,
+                            cursor: deletingPlanoId === String(plano.id || draft.id) ? "not-allowed" : "pointer",
+                            opacity: deletingPlanoId === String(plano.id || draft.id) ? 0.6 : 1,
                             padding: 0,
                           }}
                         >
-                          {deletingPlanoId === String(plano.id) ? "Eliminando..." : "Eliminar"}
+                          {deletingPlanoId === String(plano.id || draft.id) ? "Eliminando..." : "Eliminar"}
                         </button>
                       ) : null}
                     </div>
@@ -1125,7 +1125,7 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
   );
 }
 
-function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlano, uploadingPlano, savingField, canEdit, onDelete, planos = [] }) {
+function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlano, onDeletePlano, deletingPlanoId, uploadingPlano, savingField, canEdit, onDelete, planos = [] }) {
   const [draft, setDraft] = useState(exp);
 
   useEffect(() => {
@@ -1171,7 +1171,7 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {canEdit ? (
             <label style={{ ...btnGhost, textAlign: "center", padding: "8px 10px", fontSize: 11, color: uploadingPlano ? C.dim : C.text, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
-              {uploadingPlano ? "Subiendo..." : "Subir plano"}
+              {uploadingPlano ? "Subiendo..." : (latestPlano || draft.planoUrl ? "Reemplazar plano" : "Subir plano")}
               <input
                 type="file"
                 accept="image/*,.pdf"
@@ -1189,6 +1189,25 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
             <>
               <a href={(latestPlano?.publicUrl || draft.planoUrl)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.sky, fontWeight: 700, textDecoration: "none" }}>Ver plano</a>
               <span style={{ fontSize: 11, color: C.dim }}>{planos.length > 1 ? `${planos.length} archivos` : (latestPlano?.nombreOriginal || "1 archivo")}</span>
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => onDeletePlano(draft.id, latestPlano || { id: `legacy-${draft.id}`, archivoPath: draft.planoPath, nombreOriginal: draft.planoPath || "Plano", publicUrl: draft.planoUrl })}
+                  disabled={deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: C.red,
+                    fontWeight: 700,
+                    cursor: deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? "not-allowed" : "pointer",
+                    opacity: deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? 0.6 : 1,
+                    padding: 0,
+                    fontSize: 11,
+                  }}
+                >
+                  {deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? "Eliminando..." : "Eliminar plano"}
+                </button>
+              ) : null}
             </>
           ) : <span style={{ fontSize: 11, color: C.dim }}>Sin archivo</span>}
         </div>
@@ -1578,9 +1597,11 @@ export default function App() {
     }
   }
   async function deletePlanoFile(expedienteId, plano) {
-    if (!supabase || !canEdit || !expedienteId || !plano?.id) return;
+    if (!supabase || !canEdit || !expedienteId) return;
 
-    const ok = window.confirm(`¿Eliminar el plano "${plano.nombreOriginal || "archivo"}"?`);
+    const planoId = plano?.id;
+    const isLegacyPlano = String(planoId || "").startsWith("legacy-");
+    const ok = window.confirm(`¿Eliminar el plano "${plano?.nombreOriginal || "archivo"}"?`);
     if (!ok) return;
 
     setDeletingPlanoId(String(plano.id));
@@ -1598,13 +1619,15 @@ export default function App() {
         }
       }
 
-      const { error: deletePlanoError } = await supabase
-        .from(PLANOS_TABLE)
-        .delete()
-        .eq("id", plano.id);
+      if (!isLegacyPlano && planoId) {
+        const { error: deletePlanoError } = await supabase
+          .from(PLANOS_TABLE)
+          .delete()
+          .eq("id", planoId);
 
-      if (deletePlanoError) {
-        throw new Error(`No se pudo eliminar el registro del plano: ${deletePlanoError.message}`);
+        if (deletePlanoError) {
+          throw new Error(`No se pudo eliminar el registro del plano: ${deletePlanoError.message}`);
+        }
       }
 
       const planosRefresh = await refreshPlanosForExpediente(expedienteId);
@@ -1999,7 +2022,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {slice.length === 0 ? <tr><td colSpan={13}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp) => <ExpedienteRow key={exp.id} exp={exp} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} />)}
+                        {slice.length === 0 ? <tr><td colSpan={13}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp) => <ExpedienteRow key={exp.id} exp={exp} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} />)}
                       </tbody>
                     </table>
                   </div>
