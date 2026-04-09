@@ -358,6 +358,19 @@ async function fetchPlanosIndex(expedienteIds = []) {
   return { data: buildPlanosIndex(data || []), error: null };
 }
 
+async function fetchPlanosForExpediente(expedienteId) {
+  if (!supabase || !expedienteId) return { data: [], error: null };
+
+  const { data, error } = await supabase
+    .from(PLANOS_TABLE)
+    .select("id, expediente_id, archivo_path, nombre_original, tipo_mime, tamano_bytes, created_at, uploaded_by")
+    .eq("expediente_id", expedienteId)
+    .order("created_at", { ascending: false });
+
+  if (error) return { data: [], error };
+  return { data: (data || []).map(normalizePlanoRecord), error: null };
+}
+
 function normalizeExpediente(row) {
   return {
     id: row.id,
@@ -1242,6 +1255,38 @@ export default function App() {
     Object.values(saveTimersRef.current).forEach((timer) => clearTimeout(timer));
   }, []);
 
+  async function applyExpedientePlanoUpdate(expedienteId, filePath, publicUrl) {
+    if (!supabase || !expedienteId) return { data: null, error: null };
+
+    const timestamp = new Date().toISOString();
+    const payload = {
+      plano_path: filePath || "",
+      plano_url: publicUrl || "",
+      ultima_actualizacion: timestamp,
+      updated_at: timestamp,
+    };
+
+    return await supabase
+      .from("expedientes")
+      .update(payload)
+      .eq("id", expedienteId)
+      .select("*")
+      .single();
+  }
+
+  async function refreshPlanosForExpediente(expedienteId) {
+    const result = await fetchPlanosForExpediente(expedienteId);
+    if (result.error) return { data: [], error: result.error };
+
+    const planos = result.data || [];
+    setPlanosByExpediente((prev) => ({
+      ...prev,
+      [expedienteId]: planos,
+    }));
+
+    return { data: planos, error: null };
+  }
+
 
   async function loadInitialData(showRefresh = false) {
     if (!supabase) {
@@ -1443,58 +1488,73 @@ export default function App() {
 
     setUploadingPlanoId(String(expedienteId));
     setError("");
-    const extension = getFileExtension(file.name) || "bin";
-    const safeBaseName = String(file.name || "archivo")
-      .replace(/\.[^.]+$/, "")
-      .replace(/[^a-zA-Z0-9_-]/g, "-")
-      .replace(/-+/g, "-")
-      .slice(0, 60) || "plano";
-    const filePath = `${expedienteId}/${Date.now()}-${safeBaseName}.${extension}`;
+    setNotice("");
 
-    const { error: uploadError } = await supabase.storage
-      .from(PLANOS_BUCKET)
-      .upload(filePath, file, { upsert: false, contentType: file.type || undefined });
+    try {
+      const extension = getFileExtension(file.name) || "bin";
+      const safeBaseName = String(file.name || "archivo")
+        .replace(/\.[^.]+$/, "")
+        .replace(/[^a-zA-Z0-9_-]/g, "-")
+        .replace(/-+/g, "-")
+        .slice(0, 60) || "plano";
+      const filePath = `${expedienteId}/${Date.now()}-${safeBaseName}.${extension}`;
 
-    if (uploadError) {
-      setError(`No se pudo subir el plano: ${uploadError.message}`);
+      const { error: uploadError } = await supabase.storage
+        .from(PLANOS_BUCKET)
+        .upload(filePath, file, { upsert: false, contentType: file.type || undefined });
+
+      if (uploadError) {
+        throw new Error(`No se pudo subir el plano: ${uploadError.message}`);
+      }
+
+      const publicUrl = buildPlanoPublicUrl(filePath);
+
+      const metadataPayload = {
+        expediente_id: expedienteId,
+        archivo_path: filePath,
+        nombre_original: file.name,
+        tipo_mime: file.type || null,
+        tamano_bytes: file.size || 0,
+        uploaded_by: activeUser?.nombre || null,
+      };
+
+      const { error: planoInsertError } = await supabase.from(PLANOS_TABLE).insert(metadataPayload);
+      if (planoInsertError) {
+        throw new Error(`El archivo se subió, pero no se pudo registrar en la base: ${planoInsertError.message}`);
+      }
+
+      const { data: updatedExpediente, error: expedienteUpdateError } = await applyExpedientePlanoUpdate(expedienteId, filePath, publicUrl);
+      if (expedienteUpdateError) {
+        throw new Error(`El archivo se subió, pero no se pudo vincular al expediente: ${expedienteUpdateError.message}`);
+      }
+
+      const planosRefresh = await refreshPlanosForExpediente(expedienteId);
+      if (planosRefresh.error) {
+        throw new Error(`El archivo se subió, pero no se pudo refrescar la lista de planos: ${planosRefresh.error.message}`);
+      }
+
+      const normalizedExpediente = normalizeExpediente(updatedExpediente);
+      const latestPlano = (planosRefresh.data || [])[0] || null;
+      const mergedExpediente = latestPlano
+        ? {
+            ...normalizedExpediente,
+            planoPath: latestPlano.archivoPath || normalizedExpediente.planoPath || filePath,
+            planoUrl: latestPlano.publicUrl || normalizedExpediente.planoUrl || publicUrl,
+          }
+        : {
+            ...normalizedExpediente,
+            planoPath: normalizedExpediente.planoPath || filePath,
+            planoUrl: normalizedExpediente.planoUrl || publicUrl,
+          };
+
+      setData((prev) => prev.map((item) => (item.id === expedienteId ? mergedExpediente : item)));
+      setModalItem((prev) => (prev && prev.id === expedienteId ? mergedExpediente : prev));
+      setNotice("Plano subido correctamente.");
+    } catch (err) {
+      setError(err.message || "No se pudo subir el plano.");
+    } finally {
       setUploadingPlanoId("");
-      return;
     }
-
-    const publicUrl = buildPlanoPublicUrl(filePath);
-
-    const metadataPayload = {
-      expediente_id: expedienteId,
-      archivo_path: filePath,
-      nombre_original: file.name,
-      tipo_mime: file.type || null,
-      tamano_bytes: file.size || 0,
-      uploaded_by: activeUser?.nombre || null,
-    };
-
-    const { data: insertedPlano, error: planoInsertError } = await supabase
-      .from(PLANOS_TABLE)
-      .insert(metadataPayload)
-      .select("id, expediente_id, archivo_path, nombre_original, tipo_mime, tamano_bytes, created_at, uploaded_by")
-      .single();
-
-    if (planoInsertError) {
-      setError(`El archivo se subió, pero no se pudo registrar en la base: ${planoInsertError.message}`);
-    }
-
-    if (insertedPlano) {
-      const normalizedPlano = normalizePlanoRecord(insertedPlano);
-      setPlanosByExpediente((prev) => ({
-        ...prev,
-        [expedienteId]: [normalizedPlano, ...(prev[expedienteId] || [])],
-      }));
-      setData((prev) => prev.map((item) => (item.id === expedienteId ? { ...item, planoPath: filePath, planoUrl: publicUrl } : item)));
-      setModalItem((prev) => (prev && prev.id === expedienteId ? { ...prev, planoPath: filePath, planoUrl: publicUrl } : prev));
-    }
-
-    await persistFieldUpdate(expedienteId, { planoPath: filePath, planoUrl: publicUrl });
-    setUploadingPlanoId("");
-    setNotice("Plano subido correctamente.");
   }
   async function deleteExpediente(item) {
     if (!supabase || !canEdit || !item?.id) return;
