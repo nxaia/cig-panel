@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import logoArea from "./assets/logo-area.png";
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase =
@@ -880,13 +881,14 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
   return (
     <div
       style={{
-        minHeight: "100vh",
+        height: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 24,
+        padding: 16,
         boxSizing: "border-box",
+        overflow: "hidden",
       }}
     >
       <div
@@ -898,60 +900,80 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           overflow: "hidden",
           boxShadow: "0 24px 80px rgba(15,23,42,.12)",
           border: `1px solid ${C.border}`,
+          maxHeight: "calc(100vh - 32px)",
         }}
       >
         <div style={{ height: 8, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
-        <div style={{ padding: "34px 30px 28px", textAlign: "center" }}>
+        <div style={{ padding: "24px 28px 22px", textAlign: "center" }}>
           <div
             style={{
-              width: 132,
-              height: 132,
-              margin: "0 auto 28px",
-              borderRadius: 28,
+              width: 108,
+              height: 108,
+              margin: "0 auto 20px",
+              borderRadius: 24,
               background: "#fff",
               border: `1px solid ${C.border}`,
-              boxShadow: "0 16px 40px rgba(15,23,42,.08)",
+              boxShadow: "0 12px 30px rgba(15,23,42,.08)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <img src="/logo-icono.png" alt="Municipio" style={{ width: 102, height: 102, objectFit: "contain" }} />
+            <img src="/logo-icono.png" alt="Municipio" style={{ width: 84, height: 84, objectFit: "contain" }} />
           </div>
 
-          <div style={{ fontSize: 14, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>MUNICIPALIDAD DE</div>
-          <div style={{ fontSize: 26, color: C.slate, fontWeight: 800, marginTop: 6 }}>Banda del Río Salí</div>
-          <div style={{ width: 92, height: 4, borderRadius: 999, background: "#14b8a6", margin: "20px auto 18px" }} />
-          <div style={{ fontSize: 18, color: C.slate, fontWeight: 700 }}>Dirección de Regularización Dominial</div>
+          <div style={{ fontSize: 13, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>MUNICIPALIDAD DE</div>
+          <div style={{ fontSize: 24, color: C.slate, fontWeight: 800, marginTop: 6 }}>Banda del Río Salí</div>
+          <div style={{ width: 92, height: 4, borderRadius: 999, background: "#14b8a6", margin: "16px auto 14px" }} />
+
           <div
-  style={{
-    width: 132,
-    height: 132,
-    margin: "20px auto 0",
-    borderRadius: 28,
-    background: "#fff",
-    border: `1px solid ${C.border}`,
-    boxShadow: "0 16px 40px rgba(15,23,42,.08)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  }}
->
-  <img
-    src={logoArea}
-    alt="Logo área"
-    style={{
-      width: 102,
-      height: 102,
-      objectFit: "contain",
-    }}
-  />
-</div>
-          <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 14, lineHeight: 1.55 }}>
+            style={{
+              width: 108,
+              height: 108,
+              margin: "0 auto",
+              borderRadius: 24,
+              background: "#fff",
+              border: `1px solid ${C.border}`,
+              boxShadow: "0 12px 30px rgba(15,23,42,.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            <img
+              src={logoArea}
+              alt="Logo del área"
+              style={{
+                width: 86,
+                height: 86,
+                objectFit: "contain",
+                objectPosition: "center top",
+                transform: "translateY(-4px)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: 12,
+                right: 12,
+                bottom: 18,
+                height: 18,
+                background: "#fff",
+                borderRadius: 8,
+              }}
+            />
+          </div>
+
+          <div style={{ marginTop: 12, fontSize: 12, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>DIRECCIÓN DE</div>
+          <div style={{ fontSize: 21, color: C.slate, fontWeight: 800, marginTop: 4 }}>Regularización Dominial y Hábitat</div>
+
+          <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>
             Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado para continuar.
           </div>
 
-          <div style={{ maxWidth: 480, margin: "28px auto 0", display: "grid", gap: 12 }}>
+          <div style={{ maxWidth: 480, margin: "20px auto 0", display: "grid", gap: 12 }}>
             {LOGIN_USERS.map((user) => {
               const active = selectedUserId === user.id;
               return (
@@ -960,7 +982,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   onClick={() => onSelectUser(user.id)}
                   style={{
                     textAlign: "left",
-                    padding: "16px 18px",
+                    padding: "14px 18px",
                     borderRadius: 16,
                     border: `1px solid ${active ? "#7dd3fc" : C.border}`,
                     background: active ? "#f0f9ff" : "#fff",
@@ -997,7 +1019,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
             <div
               style={{
                 maxWidth: 480,
-                margin: "18px auto 0",
+                margin: "14px auto 0",
                 background: "#fef2f2",
                 color: "#991b1b",
                 border: "1px solid #fecaca",
@@ -1010,7 +1032,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
             </div>
           ) : null}
 
-          <div style={{ marginTop: 24 }}>
+          <div style={{ marginTop: 18 }}>
             <button
               onClick={onIngresar}
               disabled={loginLoading || !selectedUserId}
