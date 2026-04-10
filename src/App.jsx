@@ -928,13 +928,13 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
 
           <div
             style={{
-              width: 134,
-              height: 134,
-              margin: "2px auto 0",
-              borderRadius: 30,
-              background: "linear-gradient(180deg,#ffffff 0%, #f8fbff 100%)",
+              width: 108,
+              height: 108,
+              margin: "0 auto",
+              borderRadius: 24,
+              background: "#fff",
               border: `1px solid ${C.border}`,
-              boxShadow: "0 18px 42px rgba(15,23,42,.10)",
+              boxShadow: "0 12px 30px rgba(15,23,42,.08)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -944,16 +944,18 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
               src={logoArea}
               alt="Logo del área"
               style={{
-                width: 112,
-                height: 112,
+                width: 96,
+                height: 96,
                 objectFit: "contain",
-                filter: "drop-shadow(0 6px 16px rgba(14,165,233,.12))",
+                display: "block",
+                background: "#fff",
+                borderRadius: 20,
               }}
             />
           </div>
 
-          <div style={{ marginTop: 14, fontSize: 12, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>DIRECCIÓN DE</div>
-          <div style={{ fontSize: 23, color: C.slate, fontWeight: 800, marginTop: 4, lineHeight: 1.15 }}>Regularización Dominial y Hábitat</div>
+          <div style={{ marginTop: 12, fontSize: 12, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>DIRECCIÓN DE</div>
+          <div style={{ fontSize: 21, color: C.slate, fontWeight: 800, marginTop: 4 }}>Regularización Dominial y Hábitat</div>
 
           <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>
             Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado para continuar.
