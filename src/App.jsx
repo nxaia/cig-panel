@@ -11,8 +11,8 @@ const supabase =
 const PLANOS_BUCKET = "planos-expedientes";
 const PLANOS_TABLE = "expediente_planos";
 const MAX_PLANO_FILE_SIZE_MB = 15;
-const ALLOWED_PLANO_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg"];
-const ALLOWED_PLANO_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp"];
+const ALLOWED_PLANO_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv"];
+const ALLOWED_PLANO_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "xls", "xlsx", "csv"];
 
 const C = {
   bg: "#f5f7fa",
@@ -137,13 +137,32 @@ const LOGIN_USERS = [
   { id: "emanuel-aguilar", nombre: "Emanuel Aguilar", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 5;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
+
+
+const TABLE_COLGROUP = [
+  { key: "check", width: "36px" },
+  { key: "expediente", width: "118px" },
+  { key: "titular", width: "190px" },
+  { key: "dni", width: "92px" },
+  { key: "contacto", width: "108px" },
+  { key: "estadoCivil", width: "120px" },
+  { key: "barrio", width: "170px" },
+  { key: "padron", width: "100px" },
+  { key: "archivos", width: "150px" },
+  { key: "estado", width: "118px" },
+  { key: "area", width: "96px" },
+  { key: "responsable", width: "116px" },
+  { key: "notas", width: "150px" },
+  { key: "acciones", width: "96px" },
+];
+
 
 const inputStyle = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "10px 12px",
+  padding: "8px 8px",
   border: `1px solid ${C.border}`,
   borderRadius: 8,
   fontSize: 13,
@@ -155,13 +174,15 @@ const inputStyle = {
 const compactInputStyle = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "7px 9px",
+  padding: "5px 8px",
   border: `1px solid ${C.border}`,
   borderRadius: 8,
-  fontSize: 12,
+  fontSize: 11,
   background: "#fff",
   color: C.text,
   outline: "none",
+  minHeight: 30,
+  lineHeight: 1.2,
 };
 
 const btnPrimary = {
@@ -305,6 +326,123 @@ function formatFileSize(bytes) {
   if (!size) return "—";
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
   return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function isPreviewableFile(fileName = "", mimeType = "") {
+  const extension = getFileExtension(fileName);
+  return ["pdf", "jpg", "jpeg", "png", "webp"].includes(extension) || String(mimeType || "").startsWith("image/") || mimeType === "application/pdf";
+}
+
+function getPreviewType(fileName = "", mimeType = "") {
+  const extension = getFileExtension(fileName);
+  if (["jpg", "jpeg", "png", "webp"].includes(extension) || String(mimeType || "").startsWith("image/")) return "image";
+  if (extension === "pdf" || mimeType === "application/pdf") return "pdf";
+  return "other";
+}
+
+function buildBarrioFilterOptions() {
+  return LOCALIDADES.map((localidad) => ({
+    localidad,
+    items: (BARRIOS[localidad] || []).map((barrio) => ({
+      value: composeBarrio(localidad, barrio),
+      label: barrio,
+    })),
+  }));
+}
+
+function getAttachmentLabel(fileName = "", mimeType = "") {
+  const ext = getFileExtension(fileName);
+  if (["jpg", "jpeg", "png", "webp"].includes(ext) || String(mimeType).startsWith("image/")) return "Imagen";
+  if (ext === "pdf" || mimeType === "application/pdf") return "PDF";
+  if (["doc", "docx"].includes(ext)) return "Documento";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "Planilla";
+  return "Archivo";
+}
+
+function isPreviewableAttachment(fileName = "", mimeType = "") {
+  const ext = getFileExtension(fileName);
+  return mimeType === "application/pdf" || String(mimeType).startsWith("image/") || ["pdf", "jpg", "jpeg", "png", "webp"].includes(ext);
+}
+
+function getExpedienteCompleteness(expediente, attachments = []) {
+  const scoreMap = [
+    { ok: cleanText(expediente?.num), weight: 1 },
+    { ok: cleanText(expediente?.titular), weight: 1 },
+    { ok: cleanText(expediente?.dni), weight: 1 },
+    { ok: cleanText(expediente?.telefono), weight: 1 },
+    { ok: cleanText(expediente?.barrio), weight: 1 },
+    { ok: cleanText(expediente?.estadoCivil), weight: 1 },
+    { ok: cleanText(expediente?.padronNumero), weight: 1 },
+    { ok: cleanText(expediente?.estado), weight: 1 },
+    { ok: cleanText(expediente?.area), weight: 1 },
+    { ok: cleanText(expediente?.resp), weight: 1 },
+    { ok: cleanText(expediente?.notas) || cleanText(expediente?.observaciones), weight: 1 },
+    { ok: attachments.length > 0, weight: 2 },
+  ];
+
+  const completed = scoreMap.reduce((acc, item) => acc + (item.ok ? item.weight : 0), 0);
+  const total = scoreMap.reduce((acc, item) => acc + item.weight, 0);
+  const percent = Math.round((completed / total) * 100);
+
+  let level = "bajo";
+  let label = "Bajo";
+  if (percent >= 75) {
+    level = "alto";
+    label = "Alto";
+  } else if (percent >= 45) {
+    level = "medio";
+    label = "Intermedio";
+  }
+
+  return { completed, total, percent, level, label };
+}
+
+function getExpedienteWarnings(expediente, attachments = []) {
+  const warnings = [];
+  if (expediente?.estado === "listo" && attachments.length === 0) warnings.push("Está marcado como listo, pero no tiene archivos adjuntos.");
+  if (cleanText(expediente?.dni) && !cleanText(expediente?.titular)) warnings.push("Tiene DNI cargado, pero falta el nombre del titular.");
+  if (cleanText(expediente?.padronNumero) && !cleanText(expediente?.barrio)) warnings.push("Tiene padrón cargado, pero falta barrio o localidad.");
+  if (["en_proceso", "revision_legal", "listo"].includes(expediente?.estado) && !cleanText(expediente?.resp)) warnings.push("El estado actual sugiere asignar un responsable.");
+  if (expediente?.estado === "revision_legal" && !cleanText(expediente?.padronNumero)) warnings.push("Revisión legal sin padrón cargado.");
+  return warnings;
+}
+
+function getEstadoSelectStyle(estado) {
+  const current = ESTADOS[estado] || ESTADOS.pendiente;
+  return {
+    ...compactInputStyle,
+    background: current.bg,
+    color: current.color,
+    borderColor: current.border,
+    fontWeight: 700,
+  };
+}
+
+function CompletenessBadge({ expediente, attachments = [] }) {
+  const info = getExpedienteCompleteness(expediente, attachments);
+  const styles = info.level === "alto"
+    ? { background: "#dcfce7", color: "#166534", border: "#bbf7d0" }
+    : info.level === "medio"
+    ? { background: "#fef3c7", color: "#92400e", border: "#fde68a" }
+    : { background: "#e2e8f0", color: "#475569", border: "#cbd5e1" };
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "2px 9px",
+        borderRadius: 20,
+        fontSize: 10,
+        fontWeight: 700,
+        background: styles.background,
+        color: styles.color,
+        border: `1px solid ${styles.border}`,
+      }}
+    >
+      {info.label} · {info.percent}%
+    </span>
+  );
 }
 
 function buildPlanoPublicUrl(filePath) {
@@ -870,11 +1008,13 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
   );
 }
 
-function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [] }) {
+function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [], onNext, modalIndex = 0, modalTotal = 0 }) {
   const [draft, setDraft] = useState(item || null);
+  const [previewFileId, setPreviewFileId] = useState("");
 
   useEffect(() => {
     setDraft(item || null);
+    setPreviewFileId("");
   }, [item]);
 
   if (!draft) return null;
@@ -882,7 +1022,10 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
   const zona = splitBarrio(draft.barrio);
   const saving = savingField === String(draft.id);
   const barrios = BARRIOS[zona.localidad || "Banda del Río Salí"] || ALL_BARRIOS;
-  const latestPlano = planos[0] || null;
+  const modalFiles = planos.length ? planos : (draft.planoUrl ? [{ id: `legacy-${draft.id}`, nombreOriginal: draft.planoPath || "Archivo cargado", publicUrl: draft.planoUrl, tamanoBytes: 0, createdAt: draft.upd, tipoMime: "" }] : []);
+  const previewTarget = modalFiles.find((file) => String(file.id) === String(previewFileId)) || modalFiles[0] || null;
+  const completeness = getExpedienteCompleteness(draft, modalFiles);
+  const warnings = getExpedienteWarnings(draft, modalFiles);
 
   const updateField = (field, value) => {
     const next = { ...draft, [field]: value };
@@ -916,17 +1059,21 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
           background: "#fff",
           borderRadius: 18,
           width: "100%",
-          maxWidth: 980,
+          maxWidth: 1080,
           margin: "0 16px",
           overflow: "hidden",
           boxShadow: "0 20px 60px rgba(0,0,0,.15)",
+          maxHeight: "92vh",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        <div style={{ background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", padding: "22px 24px", color: "#fff" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", padding: "20px 24px", color: "#fff" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, color: "#bae6fd", fontWeight: 600, textTransform: "uppercase" }}>Expediente</div>
-              <div style={{ fontSize: 20, fontWeight: 700, marginTop: 3 }}>{draft.num}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, marginTop: 3 }}>{draft.num}</div>
+              {modalTotal > 0 ? <div style={{ fontSize: 12, color: "#e0f2fe", marginTop: 4 }}>Expediente {modalIndex + 1} de {modalTotal}</div> : null}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               {saving ? <span style={{ fontSize: 12, color: "#e0f2fe" }}>Guardando…</span> : null}
@@ -936,86 +1083,126 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
           </div>
         </div>
 
-        <div style={{ padding: 24, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
-          <div><div style={labelStyle}>Titular</div><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={inputStyle} /></div>
-          <div><div style={labelStyle}>DNI</div><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={inputStyle} /></div>
-          <div><div style={labelStyle}>Contacto</div><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={inputStyle} /></div>
-          <div><div style={labelStyle}>Estado civil</div><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={inputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></div>
-          <div><div style={labelStyle}>Localidad</div><select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={inputStyle}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select></div>
-          <div><div style={labelStyle}>Barrio</div><select value={zona.barrio || ""} disabled={!canEdit} onChange={(e) => updateZona("barrio", e.target.value)} style={inputStyle}><option value="">Seleccionar</option>{barrios.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
-          <div><div style={labelStyle}>N° de padrón</div><input value={draft.padronNumero} disabled={!canEdit} onChange={(e) => updateField("padronNumero", e.target.value)} style={inputStyle} /></div>
-          <div><div style={labelStyle}>Estado</div><select value={draft.estado} disabled={!canEdit} onChange={(e) => updateField("estado", e.target.value)} style={inputStyle}>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></div>
-          <div><div style={labelStyle}>Área</div><select value={draft.area} disabled={!canEdit} onChange={(e) => updateField("area", e.target.value)} style={inputStyle}>{AREAS.filter(Boolean).map((a) => <option key={a} value={a}>{a}</option>)}</select></div>
-          <div><div style={labelStyle}>Responsable</div><select value={draft.resp} disabled={!canEdit} onChange={(e) => updateField("resp", e.target.value)} style={inputStyle}><option value="">Responsable</option>{users.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}</select></div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <div style={labelStyle}>Notas internas</div>
-            <textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={4} style={{ ...inputStyle, resize: "vertical" }} />
+        <div style={{ padding: 20, overflow: "auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+            <div style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}><div style={labelStyle}>Estado</div><div><Badge estado={draft.estado} /></div></div>
+            <div style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}><div style={labelStyle}>Responsable</div><div style={{ fontWeight: 700, fontSize: 13 }}>{usersMap[draft.resp] || "Sin asignar"}</div></div>
+            <div style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}><div style={labelStyle}>Nivel de carga</div><div><CompletenessBadge expediente={draft} attachments={modalFiles} /></div></div>
+            <div style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}><div style={labelStyle}>Archivos</div><div style={{ fontWeight: 700, fontSize: 13 }}>{modalFiles.length}</div></div>
           </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <div style={labelStyle}>Planos adjuntos</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12 }}>
-              {canEdit ? (
-                <label style={{ ...btnGhost, display: "inline-flex", alignItems: "center", gap: 8, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
-                  {uploadingPlano ? "Subiendo..." : "Subir plano (PDF o imagen)"}
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    style={{ display: "none" }}
-                    disabled={uploadingPlano}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) onUploadPlano(draft.id, file);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              ) : null}
-              <span style={{ color: C.dim, fontSize: 12 }}>Máximo {MAX_PLANO_FILE_SIZE_MB} MB • JPG, PNG, WEBP o PDF</span>
-            </div>
 
-            {latestPlano || draft.planoUrl ? (
-              <div style={{ display: "grid", gap: 10 }}>
-                {(planos.length ? planos : [{ id: `legacy-${draft.id}`, nombreOriginal: draft.planoPath || "Plano cargado", publicUrl: draft.planoUrl, tamanoBytes: 0, createdAt: draft.upd }]).map((plano) => (
-                  <div key={plano.id} style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>{plano.nombreOriginal || "Plano"}</div>
-                      <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
-                        {plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "Archivo adjunto"}
-                        {plano.createdAt ? ` • ${formatDateTime(plano.createdAt)}` : ""}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                      <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none" }}>Ver plano</a>
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => onDeletePlano(draft.id, plano)}
-                          disabled={deletingPlanoId === String(plano.id || draft.id)}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            color: C.red,
-                            fontWeight: 700,
-                            cursor: deletingPlanoId === String(plano.id || draft.id) ? "not-allowed" : "pointer",
-                            opacity: deletingPlanoId === String(plano.id || draft.id) ? 0.6 : 1,
-                            padding: 0,
-                          }}
-                        >
-                          {deletingPlanoId === String(plano.id || draft.id) ? "Eliminando..." : "Eliminar"}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
+          {warnings.length ? (
+            <div style={{ marginBottom: 14, background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a", borderRadius: 12, padding: "12px 14px" }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Alertas inteligentes</div>
+              <div style={{ display: "grid", gap: 4, fontSize: 13 }}>{warnings.map((warning) => <div key={warning}>• {warning}</div>)}</div>
+            </div>
+          ) : null}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+            <div><div style={labelStyle}>Titular</div><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={inputStyle} /></div>
+            <div><div style={labelStyle}>DNI</div><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={inputStyle} /></div>
+            <div><div style={labelStyle}>Contacto</div><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={inputStyle} /></div>
+            <div><div style={labelStyle}>Estado civil</div><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={inputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></div>
+            <div><div style={labelStyle}>Localidad</div><select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={inputStyle}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select></div>
+            <div><div style={labelStyle}>Barrio</div><select value={zona.barrio || ""} disabled={!canEdit} onChange={(e) => updateZona("barrio", e.target.value)} style={inputStyle}><option value="">Seleccionar</option>{barrios.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
+            <div><div style={labelStyle}>N° de padrón</div><input value={draft.padronNumero} disabled={!canEdit} onChange={(e) => updateField("padronNumero", e.target.value)} style={inputStyle} /></div>
+            <div><div style={labelStyle}>Estado</div><select value={draft.estado} disabled={!canEdit} onChange={(e) => updateField("estado", e.target.value)} style={{ ...inputStyle, background: (ESTADOS[draft.estado] || ESTADOS.pendiente).bg, color: (ESTADOS[draft.estado] || ESTADOS.pendiente).color, borderColor: (ESTADOS[draft.estado] || ESTADOS.pendiente).border, fontWeight: 700 }}>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></div>
+            <div><div style={labelStyle}>Área</div><select value={draft.area} disabled={!canEdit} onChange={(e) => updateField("area", e.target.value)} style={inputStyle}>{AREAS.filter(Boolean).map((a) => <option key={a} value={a}>{a}</option>)}</select></div>
+            <div><div style={labelStyle}>Responsable</div><select value={draft.resp} disabled={!canEdit} onChange={(e) => updateField("resp", e.target.value)} style={inputStyle}><option value="">Responsable</option>{users.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}</select></div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div style={labelStyle}>Notas internas</div>
+              <textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div style={labelStyle}>Archivos adjuntos</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12 }}>
+                {canEdit ? (
+                  <label style={{ ...btnGhost, display: "inline-flex", alignItems: "center", gap: 8, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
+                    {uploadingPlano ? "Subiendo..." : "Subir archivos"}
+                    <input
+                      type="file"
+                      accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
+                      multiple
+                      style={{ display: "none" }}
+                      disabled={uploadingPlano}
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length) onUploadPlano(draft.id, files);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                ) : null}
+                <span style={{ color: C.dim, fontSize: 12 }}>Máximo {MAX_PLANO_FILE_SIZE_MB} MB por archivo • JPG, PNG, WEBP, PDF, DOC, DOCX, XLS, XLSX, CSV</span>
               </div>
-            ) : (
-              <span style={{ color: C.dim, fontSize: 12 }}>Sin archivos adjuntos</span>
-            )}
+
+              {modalFiles.length ? (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {modalFiles.map((plano) => {
+                      const activePreview = String(previewTarget?.id || "") === String(plano.id);
+                      return (
+                        <div key={plano.id} style={{ background: activePreview ? "#eff6ff" : "#f8fafc", border: `1px solid ${activePreview ? "#93c5fd" : C.border}`, borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                          <div>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>{plano.nombreOriginal || "Archivo"}</div>
+                              <span style={{ fontSize: 10, color: C.dim, border: `1px solid ${C.border}`, borderRadius: 999, padding: "1px 6px" }}>{getAttachmentLabel(plano.nombreOriginal, plano.tipoMime)}</span>
+                            </div>
+                            <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
+                              {plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "Archivo adjunto"}
+                              {plano.createdAt ? ` • ${formatDateTime(plano.createdAt)}` : ""}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => setPreviewFileId(String(plano.id))} style={{ ...btnGhost, padding: "7px 10px", fontSize: 12, color: C.sky }}>Ver</button>
+                            <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
+                            <a href={plano.publicUrl} download style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Descargar</a>
+                            {canEdit ? (
+                              <button
+                                type="button"
+                                onClick={() => onDeletePlano(draft.id, plano)}
+                                disabled={deletingPlanoId === String(plano.id || draft.id)}
+                                style={{ border: "none", background: "transparent", color: C.red, fontWeight: 700, cursor: deletingPlanoId === String(plano.id || draft.id) ? "not-allowed" : "pointer", opacity: deletingPlanoId === String(plano.id || draft.id) ? 0.6 : 1, padding: 0 }}
+                              >
+                                {deletingPlanoId === String(plano.id || draft.id) ? "Eliminando..." : "Eliminar"}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {previewTarget ? (
+                    <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, background: "#fff", overflow: "hidden" }}>
+                      <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>Vista previa: {previewTarget.nombreOriginal}</div>
+                        <a href={previewTarget.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir en pestaña</a>
+                      </div>
+                      {getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "image" ? (
+                        <div style={{ padding: 12, background: "#f8fafc", display: "flex", justifyContent: "center" }}>
+                          <img src={previewTarget.publicUrl} alt={previewTarget.nombreOriginal} style={{ maxWidth: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 10 }} />
+                        </div>
+                      ) : getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "pdf" ? (
+                        <iframe title={previewTarget.nombreOriginal} src={previewTarget.publicUrl} style={{ width: "100%", height: 420, border: "none", background: "#fff" }} />
+                      ) : (
+                        <div style={{ padding: 20, fontSize: 13, color: C.muted }}>Este tipo de archivo no tiene vista previa dentro del panel. Usá “Descargar” o “Abrir en pestaña”.</div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <span style={{ color: C.dim, fontSize: 12 }}>Sin archivos adjuntos</span>
+              )}
+            </div>
           </div>
         </div>
 
-        <div style={{ padding: "0 24px 20px", display: "flex", justifyContent: "space-between", gap: 10 }}>
-          <div>{canEdit ? <button onClick={() => onDelete(draft)} style={{ ...btnGhost, color: C.red, borderColor: "#fecaca" }}>Eliminar expediente</button> : null}</div>
+        <div style={{ padding: "0 24px 20px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {canEdit ? <button onClick={() => onDelete(draft)} style={{ ...btnGhost, color: C.red, borderColor: "#fecaca" }}>Eliminar expediente</button> : null}
+            {onNext ? <button onClick={onNext} style={btnGhost}>Siguiente expediente</button> : null}
+          </div>
           <button onClick={onClose} style={btnGhost}>Cerrar</button>
         </div>
       </div>
@@ -1099,7 +1286,7 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
           <div style={{ fontSize: 12, color: "#bae6fd", marginTop: 4 }}>Carga inicial del expediente</div>
         </div>
         <div style={{ padding: 20, display: "grid", gap: 12 }}>
-          {validationError ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px", fontSize: 12 }}>{validationError}</div> : null}
+          {validationError ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 8px", fontSize: 12 }}>{validationError}</div> : null}
           <input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nombre del titular" style={inputStyle} />
           <input value={form.dni} onChange={(e) => set("dni", e.target.value)} placeholder="DNI" style={inputStyle} />
           <input value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="Contacto / teléfono" style={inputStyle} />
@@ -1125,7 +1312,7 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
   );
 }
 
-function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlano, onDeletePlano, deletingPlanoId, uploadingPlano, savingField, canEdit, onDelete, planos = [] }) {
+function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlano, onDeletePlano, deletingPlanoId, uploadingPlano, savingField, canEdit, onDelete, planos = [], selected, onToggleSelect }) {
   const [draft, setDraft] = useState(exp);
 
   useEffect(() => {
@@ -1150,36 +1337,41 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
   };
 
   return (
-    <tr style={{ borderBottom: "1px solid #f8fafc", verticalAlign: "top" }}>
-      <td style={{ padding: "10px 12px" }}>
+    <tr style={{ borderBottom: "1px solid #f1f5f9", verticalAlign: "top" }}>
+      <td style={{ padding: "8px 6px", width: 32 }}>
+        <input type="checkbox" checked={selected} onChange={() => onToggleSelect(exp.id)} />
+      </td>
+      <td style={{ padding: "8px 6px", width: 118 }}>
         <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800 }}>{draft.num}</span>
         <div style={{ color: C.dim, fontSize: 11, marginTop: 6 }}>{draft.origenCarga}</div>
+        <div style={{ marginTop: 8 }}><CompletenessBadge expediente={draft} attachments={planos} /></div>
       </td>
-      <td style={{ padding: "10px 12px", minWidth: 220 }}><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "10px 12px", minWidth: 120 }}><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "10px 12px", minWidth: 150 }}><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "10px 12px", minWidth: 160 }}><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={compactInputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></td>
-      <td style={{ padding: "10px 12px", minWidth: 170 }}>
+      <td style={{ padding: "6px 5px", width: 220 }}><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={compactInputStyle} /></td>
+      <td style={{ padding: "6px 5px", width: 100 }}><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={compactInputStyle} /></td>
+      <td style={{ padding: "6px 5px", width: 118 }}><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={compactInputStyle} /></td>
+      <td style={{ padding: "6px 5px", width: 120 }}><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={compactInputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></td>
+      <td style={{ padding: "6px 5px", width: 190 }}>
         <select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={{ ...compactInputStyle, marginBottom: 8 }}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
         <select value={zona.barrio || ""} disabled={!canEdit} onChange={(e) => updateZona("barrio", e.target.value)} style={compactInputStyle}>
           <option value="">Barrio</option>
           {barrios.map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
       </td>
-      <td style={{ padding: "10px 12px", minWidth: 120 }}><input value={draft.padronNumero} disabled={!canEdit} onChange={(e) => updateField("padronNumero", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "10px 12px", minWidth: 190 }}>
+      <td style={{ padding: "6px 5px", width: 98 }}><input value={draft.padronNumero} disabled={!canEdit} onChange={(e) => updateField("padronNumero", e.target.value)} style={compactInputStyle} /></td>
+      <td style={{ padding: "6px 5px", width: 145 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {canEdit ? (
             <label style={{ ...btnGhost, textAlign: "center", padding: "8px 10px", fontSize: 11, color: uploadingPlano ? C.dim : C.text, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
-              {uploadingPlano ? "Subiendo..." : (latestPlano || draft.planoUrl ? "Reemplazar plano" : "Subir plano")}
+              {uploadingPlano ? "Subiendo..." : "Subir archivo"}
               <input
                 type="file"
-                accept="image/*,.pdf"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
+                multiple
                 style={{ display: "none" }}
                 disabled={uploadingPlano}
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) onUploadPlano(draft.id, file);
+                  const files = Array.from(e.target.files || []);
+                  if (files.length) onUploadPlano(draft.id, files);
                   e.target.value = "";
                 }}
               />
@@ -1188,20 +1380,6 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
           {latestPlano || draft.planoUrl ? (
             <>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <label style={{ ...btnGhost, textAlign: "center", padding: "6px 10px", fontSize: 11, color: uploadingPlano ? C.dim : C.text, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
-                  {uploadingPlano ? "Reemplazando..." : "Reemplazar plano"}
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    style={{ display: "none" }}
-                    disabled={uploadingPlano}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) onUploadPlano(draft.id, file);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
                 {canEdit ? (
                   <button
                     type="button"
@@ -1217,21 +1395,21 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
                       opacity: deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? 0.6 : 1,
                     }}
                   >
-                    {deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? "Eliminando..." : "Eliminar plano"}
+                    {deletingPlanoId === String((latestPlano || { id: `legacy-${draft.id}` }).id) ? "Eliminando..." : "Eliminar último"}
                   </button>
                 ) : null}
               </div>
-              <a href={(latestPlano?.publicUrl || draft.planoUrl)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.sky, fontWeight: 700, textDecoration: "none" }}>Ver plano</a>
+              <a href={(latestPlano?.publicUrl || draft.planoUrl)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.sky, fontWeight: 700, textDecoration: "none" }}>{isPreviewableAttachment(latestPlano?.nombreOriginal, latestPlano?.tipoMime) ? "Abrir último" : "Descargar último"}</a>
               <span style={{ fontSize: 11, color: C.dim }}>{planos.length > 1 ? `${planos.length} archivos` : (latestPlano?.nombreOriginal || "1 archivo")}</span>
             </>
           ) : <span style={{ fontSize: 11, color: C.dim }}>Sin archivo</span>}
         </div>
       </td>
-      <td style={{ padding: "10px 12px", minWidth: 140 }}><div style={{ marginBottom: 8 }}><Badge estado={draft.estado} /></div><select value={draft.estado} disabled={!canEdit} onChange={(e) => updateField("estado", e.target.value)} style={compactInputStyle}>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></td>
-      <td style={{ padding: "10px 12px", minWidth: 130 }}><select value={draft.area} disabled={!canEdit} onChange={(e) => updateField("area", e.target.value)} style={compactInputStyle}>{AREAS.filter(Boolean).map((a) => <option key={a} value={a}>{a}</option>)}</select></td>
-      <td style={{ padding: "10px 12px", minWidth: 150 }}><select value={draft.resp} disabled={!canEdit} onChange={(e) => updateField("resp", e.target.value)} style={compactInputStyle}><option value="">Responsable</option>{users.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}</select><div style={{ color: C.dim, fontSize: 11, marginTop: 4 }}>{usersMap[draft.resp] || "—"}</div></td>
-      <td style={{ padding: "10px 12px", minWidth: 220 }}><textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={3} style={{ ...compactInputStyle, resize: "vertical" }} /></td>
-      <td style={{ padding: "10px 12px", minWidth: 120 }}>
+      <td style={{ padding: "6px 5px", width: 112 }}><select value={draft.estado} disabled={!canEdit} onChange={(e) => updateField("estado", e.target.value)} style={getEstadoSelectStyle(draft.estado)}>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></td>
+      <td style={{ padding: "6px 5px", width: 110 }}><select value={draft.area} disabled={!canEdit} onChange={(e) => updateField("area", e.target.value)} style={compactInputStyle}>{AREAS.filter(Boolean).map((a) => <option key={a} value={a}>{a}</option>)}</select></td>
+      <td style={{ padding: "6px 5px", width: 126 }}><select value={draft.resp} disabled={!canEdit} onChange={(e) => updateField("resp", e.target.value)} style={compactInputStyle}><option value="">Responsable</option>{users.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}</select></td>
+      <td style={{ padding: "6px 5px", width: 210 }}><textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={2} style={{ ...compactInputStyle, resize: "vertical", minHeight: 44 }} /></td>
+      <td style={{ padding: "6px 5px", width: 98 }}>
         <div style={{ display: "grid", gap: 8 }}>
           <button onClick={() => onOpen(draft)} style={{ ...btnPrimary, padding: "6px 10px", fontSize: 11 }}>Ver</button>
           {canEdit ? <button onClick={() => onDelete(draft)} style={{ ...btnGhost, padding: "6px 10px", fontSize: 11, color: C.red, borderColor: "#fecaca" }}>Eliminar</button> : null}
@@ -1251,9 +1429,9 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [fEstado, setFEstado] = useState("");
   const [fArea, setFArea] = useState("");
-  const [fResp, setFResp] = useState("");
-  const [fLocalidad, setFLocalidad] = useState("");
+  const [fBarrio, setFBarrio] = useState("");
   const [fPrioridad, setFPrioridad] = useState("");
+  const [fCompletitud, setFCompletitud] = useState("");
   const [page, setPage] = useState(1);
   const [modalItem, setModalItem] = useState(null);
   const [nuevoOpen, setNuevoOpen] = useState(false);
@@ -1281,17 +1459,22 @@ export default function App() {
   const [importingExcel, setImportingExcel] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
   const [sortOrder, setSortOrder] = useState("recent");
+  const [selectedExpedientes, setSelectedExpedientes] = useState([]);
+  const [bulkEstado, setBulkEstado] = useState("");
+  const [bulkResponsable, setBulkResponsable] = useState("");
 
   const fechaActual = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
   const usersMap = useMemo(() => buildUsersMap(users), [users]);
   const canEdit = Boolean(activeUser?.canEdit);
+  const barrioFilterOptions = useMemo(() => buildBarrioFilterOptions(), []);
 
   const stats = useMemo(() => ({
     total: data.length,
     proceso: data.filter((e) => e.estado === "en_proceso").length,
     criticos: data.filter((e) => e.prio === "critica").length,
     atrasados: data.filter((e) => e.dias >= 14).length,
-  }), [data]);
+    completos: data.filter((e) => getExpedienteCompleteness(e, planosByExpediente[e.id] || []).level === "alto").length,
+  }), [data, planosByExpediente]);
 
   useEffect(() => {
     try {
@@ -1397,6 +1580,7 @@ export default function App() {
     setRawRowCount(dedupeResult.totalRows);
     setHiddenDuplicateCount(dedupeResult.hiddenDuplicates);
     setData(mergedRows);
+    setSelectedExpedientes((prev) => prev.filter((id) => mergedRows.some((row) => row.id === id)));
 
     if (dedupeResult.hiddenDuplicates > 0) {
       setNotice(`Se ocultaron ${dedupeResult.hiddenDuplicates} expedientes duplicados en pantalla. La base no fue modificada.`);
@@ -1528,16 +1712,21 @@ export default function App() {
     }, 700);
   }
 
-  async function uploadPlanoFile(expedienteId, file) {
-    if (!supabase || !file || !canEdit) return;
+  async function uploadPlanoFile(expedienteId, incomingFiles) {
+    if (!supabase || !incomingFiles || !canEdit) return;
 
-    if (!isAllowedPlanoFile(file)) {
-      setError("Formato no permitido. Subí PDF, JPG, PNG o WEBP.");
+    const files = Array.isArray(incomingFiles) ? incomingFiles : [incomingFiles];
+    if (!files.length) return;
+
+    const invalidFile = files.find((file) => !isAllowedPlanoFile(file));
+    if (invalidFile) {
+      setError("Formato no permitido. Subí PDF, JPG, PNG, WEBP, DOC, DOCX, XLS, XLSX o CSV.");
       return;
     }
 
-    if (file.size > MAX_PLANO_FILE_SIZE_MB * 1024 * 1024) {
-      setError(`El archivo supera el límite de ${MAX_PLANO_FILE_SIZE_MB} MB.`);
+    const oversized = files.find((file) => file.size > MAX_PLANO_FILE_SIZE_MB * 1024 * 1024);
+    if (oversized) {
+      setError(`El archivo ${oversized.name} supera el límite de ${MAX_PLANO_FILE_SIZE_MB} MB.`);
       return;
     }
 
@@ -1546,39 +1735,46 @@ export default function App() {
     setNotice("");
 
     try {
-      const extension = getFileExtension(file.name) || "bin";
-      const safeBaseName = String(file.name || "archivo")
-        .replace(/\.[^.]+$/, "")
-        .replace(/[^a-zA-Z0-9_-]/g, "-")
-        .replace(/-+/g, "-")
-        .slice(0, 60) || "plano";
-      const filePath = `${expedienteId}/${Date.now()}-${safeBaseName}.${extension}`;
+      let lastFilePath = "";
+      let lastPublicUrl = "";
 
-      const { error: uploadError } = await supabase.storage
-        .from(PLANOS_BUCKET)
-        .upload(filePath, file, { upsert: false, contentType: file.type || undefined });
+      for (const file of files) {
+        const extension = getFileExtension(file.name) || "bin";
+        const safeBaseName = String(file.name || "archivo")
+          .replace(/\.[^.]+$/, "")
+          .replace(/[^a-zA-Z0-9_-]/g, "-")
+          .replace(/-+/g, "-")
+          .slice(0, 60) || "archivo";
+        const filePath = `${expedienteId}/${Date.now()}-${safeBaseName}.${extension}`;
 
-      if (uploadError) {
-        throw new Error(`No se pudo subir el plano: ${uploadError.message}`);
+        const { error: uploadError } = await supabase.storage
+          .from(PLANOS_BUCKET)
+          .upload(filePath, file, { upsert: false, contentType: file.type || undefined });
+
+        if (uploadError) {
+          throw new Error(`No se pudo subir ${file.name}: ${uploadError.message}`);
+        }
+
+        const publicUrl = buildPlanoPublicUrl(filePath);
+        lastFilePath = filePath;
+        lastPublicUrl = publicUrl;
+
+        const metadataPayload = {
+          expediente_id: expedienteId,
+          archivo_path: filePath,
+          nombre_original: file.name,
+          tipo_mime: file.type || null,
+          tamano_bytes: file.size || 0,
+          uploaded_by: activeUser?.nombre || null,
+        };
+
+        const { error: planoInsertError } = await supabase.from(PLANOS_TABLE).insert(metadataPayload);
+        if (planoInsertError) {
+          throw new Error(`El archivo se subió, pero no se pudo registrar en la base: ${planoInsertError.message}`);
+        }
       }
 
-      const publicUrl = buildPlanoPublicUrl(filePath);
-
-      const metadataPayload = {
-        expediente_id: expedienteId,
-        archivo_path: filePath,
-        nombre_original: file.name,
-        tipo_mime: file.type || null,
-        tamano_bytes: file.size || 0,
-        uploaded_by: activeUser?.nombre || null,
-      };
-
-      const { error: planoInsertError } = await supabase.from(PLANOS_TABLE).insert(metadataPayload);
-      if (planoInsertError) {
-        throw new Error(`El archivo se subió, pero no se pudo registrar en la base: ${planoInsertError.message}`);
-      }
-
-      const { data: updatedExpediente, error: expedienteUpdateError } = await applyExpedientePlanoUpdate(expedienteId, filePath, publicUrl);
+      const { data: updatedExpediente, error: expedienteUpdateError } = await applyExpedientePlanoUpdate(expedienteId, lastFilePath, lastPublicUrl);
       if (expedienteUpdateError) {
         throw new Error(`El archivo se subió, pero no se pudo vincular al expediente: ${expedienteUpdateError.message}`);
       }
@@ -1593,18 +1789,18 @@ export default function App() {
       const mergedExpediente = latestPlano
         ? {
             ...normalizedExpediente,
-            planoPath: latestPlano.archivoPath || normalizedExpediente.planoPath || filePath,
-            planoUrl: latestPlano.publicUrl || normalizedExpediente.planoUrl || publicUrl,
+            planoPath: latestPlano.archivoPath || normalizedExpediente.planoPath || lastFilePath,
+            planoUrl: latestPlano.publicUrl || normalizedExpediente.planoUrl || lastPublicUrl,
           }
         : {
             ...normalizedExpediente,
-            planoPath: normalizedExpediente.planoPath || filePath,
-            planoUrl: normalizedExpediente.planoUrl || publicUrl,
+            planoPath: normalizedExpediente.planoPath || lastFilePath,
+            planoUrl: normalizedExpediente.planoUrl || lastPublicUrl,
           };
 
       setData((prev) => prev.map((item) => (item.id === expedienteId ? mergedExpediente : item)));
       setModalItem((prev) => (prev && prev.id === expedienteId ? mergedExpediente : prev));
-      setNotice("Plano subido correctamente.");
+      setNotice(files.length === 1 ? "Archivo subido correctamente." : `Se subieron ${files.length} archivos correctamente.`);
     } catch (err) {
       setError(err.message || "No se pudo subir el plano.");
     } finally {
@@ -1702,9 +1898,128 @@ export default function App() {
       delete next[item.id];
       return next;
     });
+    setSelectedExpedientes((prev) => prev.filter((id) => id !== item.id));
     setData((prev) => prev.filter((row) => row.id !== item.id));
     setModalItem((prev) => (prev?.id === item.id ? null : prev));
     setNotice(`Expediente ${item.num} eliminado correctamente.`);
+  }
+
+  function toggleSelectExpediente(expedienteId) {
+    setSelectedExpedientes((prev) => prev.includes(expedienteId) ? prev.filter((id) => id !== expedienteId) : [...prev, expedienteId]);
+  }
+
+  function toggleSelectPage() {
+    const pageIds = slice.map((item) => item.id);
+    const allSelected = pageIds.every((id) => selectedExpedientes.includes(id));
+    setSelectedExpedientes((prev) => allSelected ? prev.filter((id) => !pageIds.includes(id)) : [...new Set([...prev, ...pageIds])]);
+  }
+
+
+  async function applyBulkUpdate(partial, successLabel) {
+    if (!supabase || !canEdit || !selectedExpedientes.length) {
+      setError("Seleccioná al menos un expediente para aplicar cambios masivos.");
+      return;
+    }
+
+    const payload = buildUpdatePayload(partial);
+    const { error: updateError } = await supabase
+      .from("expedientes")
+      .update(payload)
+      .in("id", selectedExpedientes);
+
+    if (updateError) {
+      setError(`No se pudo aplicar el cambio masivo: ${updateError.message}`);
+      return;
+    }
+
+    setData((prev) => prev.map((item) => selectedExpedientes.includes(item.id) ? { ...item, ...partial, upd: payload.updated_at } : item));
+    setModalItem((prev) => (prev && selectedExpedientes.includes(prev.id) ? { ...prev, ...partial, upd: payload.updated_at } : prev));
+    setNotice(successLabel);
+  }
+
+  async function applyBulkEstado() {
+    if (!bulkEstado) {
+      setError("Seleccioná un estado para aplicar de forma masiva.");
+      return;
+    }
+    await applyBulkUpdate({ estado: bulkEstado }, `Estado actualizado en ${selectedExpedientes.length} expediente(s).`);
+  }
+
+  async function applyBulkResponsable() {
+    if (!bulkResponsable) {
+      setError("Seleccioná un responsable para aplicar de forma masiva.");
+      return;
+    }
+    await applyBulkUpdate({ resp: bulkResponsable }, `Responsable actualizado en ${selectedExpedientes.length} expediente(s).`);
+  }
+
+  async function exportSelectedToPdf() {
+    const selectedRows = data.filter((item) => selectedExpedientes.includes(item.id));
+    if (!selectedRows.length) {
+      setError("Seleccioná al menos un expediente para descargar el PDF.");
+      return;
+    }
+
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const marginX = 42;
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const maxWidth = doc.internal.pageSize.getWidth() - marginX * 2;
+      let y = 46;
+
+      const addWrappedLine = (label, value = "—") => {
+        const text = `${label}: ${value || "—"}`;
+        const lines = doc.splitTextToSize(text, maxWidth);
+        doc.text(lines, marginX, y);
+        y += lines.length * 14 + 4;
+        if (y > pageHeight - 70) {
+          doc.addPage();
+          y = 46;
+        }
+      };
+
+      selectedRows.forEach((expediente, index) => {
+        if (index > 0) {
+          doc.addPage();
+          y = 46;
+        }
+
+        const attachments = planosByExpediente[expediente.id] || [];
+        const completeness = getExpedienteCompleteness(expediente, attachments);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text(`Expediente ${expediente.num}`, marginX, y);
+        y += 24;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        addWrappedLine("Titular", expediente.titular);
+        addWrappedLine("DNI", expediente.dni);
+        addWrappedLine("Contacto", expediente.telefono);
+        addWrappedLine("Estado civil", expediente.estadoCivil);
+        addWrappedLine("Barrio", expediente.barrio);
+        addWrappedLine("Padrón", expediente.padronNumero);
+        addWrappedLine("Estado", ESTADOS[expediente.estado]?.label || expediente.estado);
+        addWrappedLine("Área", expediente.area);
+        addWrappedLine("Responsable", usersMap[expediente.resp] || "—");
+        addWrappedLine("Completitud", `${completeness.label} (${completeness.percent}%)`);
+        addWrappedLine("Notas", expediente.notas || expediente.observaciones || "—");
+        addWrappedLine("Última actualización", formatDateTime(expediente.upd));
+        addWrappedLine("Cantidad de archivos", String(attachments.length || 0));
+
+        if (attachments.length) {
+          attachments.forEach((attachment, idx) => {
+            addWrappedLine(`Archivo ${idx + 1}`, `${attachment.nombreOriginal} • ${formatFileSize(attachment.tamanoBytes)} • ${attachment.publicUrl || "sin URL"}`);
+          });
+        }
+      });
+
+      doc.save(`expedientes-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      setError(`No se pudo generar el PDF. Verificá que el proyecto tenga instalada la librería jspdf. Detalle: ${err.message}`);
+    }
   }
 
 
@@ -1852,20 +2167,39 @@ export default function App() {
     }
     if (fEstado) d = d.filter((e) => e.estado === fEstado);
     if (fArea) d = d.filter((e) => e.area === fArea);
-    if (fResp) d = d.filter((e) => e.resp === fResp);
     if (fPrioridad) d = d.filter((e) => e.prio === fPrioridad);
-    if (fLocalidad) d = d.filter((e) => splitBarrio(e.barrio).localidad === fLocalidad);
+    if (fBarrio) d = d.filter((e) => e.barrio === fBarrio);
+    if (fCompletitud) {
+      d = d.filter((e) => {
+        const info = getExpedienteCompleteness(e, planosByExpediente[e.id] || []);
+        if (fCompletitud === "alto") return info.level === "alto";
+        if (fCompletitud === "medio") return info.level === "medio";
+        if (fCompletitud === "bajo") return info.level === "bajo";
+        if (fCompletitud === "con_archivos") return (planosByExpediente[e.id] || []).length > 0 || Boolean(cleanText(e.planoUrl));
+        if (fCompletitud === "sin_archivos") return (planosByExpediente[e.id] || []).length === 0 && !cleanText(e.planoUrl);
+        return true;
+      });
+    }
 
     if (sortOrder === "az") d.sort((a, b) => cleanText(a.titular).localeCompare(cleanText(b.titular), "es", { sensitivity: "base" }));
     else if (sortOrder === "za") d.sort((a, b) => cleanText(b.titular).localeCompare(cleanText(a.titular), "es", { sensitivity: "base" }));
+    else if (sortOrder === "complete") d.sort((a, b) => getExpedienteCompleteness(b, planosByExpediente[b.id] || []).percent - getExpedienteCompleteness(a, planosByExpediente[a.id] || []).percent);
     else d.sort((a, b) => new Date(b.upd || 0).getTime() - new Date(a.upd || 0).getTime());
 
     return d;
-  }, [data, search, fEstado, fArea, fResp, fLocalidad, fPrioridad, usersMap, sortOrder]);
+  }, [data, search, fEstado, fArea, fPrioridad, fBarrio, fCompletitud, usersMap, sortOrder, planosByExpediente]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
   const currentPage = Math.min(page, totalPages);
   const slice = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const modalSequence = filtered;
+  const modalIndex = modalItem ? modalSequence.findIndex((item) => item.id === modalItem.id) : -1;
+  const modalTotal = modalSequence.length;
+
+  function openNextExpediente() {
+    if (modalIndex < 0 || modalIndex >= modalSequence.length - 1) return;
+    setModalItem(modalSequence[modalIndex + 1]);
+  }
 
   const pageButtons = useMemo(() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -1892,9 +2226,11 @@ export default function App() {
   }
 
   return (
-    <div style={{ margin: 0, fontFamily: "Segoe UI, sans-serif", background: C.bg, color: C.text, minHeight: "100vh" }}>
-      <div style={{ display: "flex", minHeight: "100vh" }}>
-        <aside style={{ width: sidebarOpen ? 196 : 82, background: "#fff", borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh" }}>
+    <>
+      <div style={{ position: "fixed", top: 10, right: 10, background: "#dc2626", color: "#fff", padding: "6px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,.15)" }}>BUILD VERCEL TEST</div>
+    <div style={{ margin: 0, fontFamily: "Segoe UI, sans-serif", background: C.bg, color: C.text, minHeight: "100vh", width: "100%", overflowX: "hidden" }}>
+      <div style={{ display: "flex", minHeight: "100vh", width: "100%" }}>
+        <aside style={{ width: sidebarOpen ? 182 : 74, background: "#fff", borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh" }}>
           <div style={{ padding: "18px 12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "center" }}>
             <div style={{ width: sidebarOpen ? 88 : 56, height: sidebarOpen ? 88 : 56, borderRadius: sidebarOpen ? 22 : 16, background: "#fff", border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 30px rgba(15,23,42,.06)" }}>
               <img src="/logo-icono.png" alt="Municipio" style={{ width: sidebarOpen ? 68 : 40, height: sidebarOpen ? 68 : 40, objectFit: "contain" }} />
@@ -1911,7 +2247,7 @@ export default function App() {
               );
             })}
           </nav>
-          <div style={{ padding: "10px 12px", borderTop: "1px solid #f1f5f9", fontSize: 11, color: C.dim, textAlign: sidebarOpen ? "left" : "center" }}>
+          <div style={{ padding: "8px 8px", borderTop: "1px solid #f1f5f9", fontSize: 11, color: C.dim, textAlign: sidebarOpen ? "left" : "center" }}>
             {sidebarOpen ? "Powered by NEXAIA" : "NX"}
           </div>
           <div style={{ padding: 8, borderTop: "1px solid #f1f5f9" }}>
@@ -1919,8 +2255,32 @@ export default function App() {
           </div>
         </aside>
 
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-          <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            width: `calc(100vw - ${sidebarOpen ? 196 : 82}px)`,
+            maxWidth: `calc(100vw - ${sidebarOpen ? 196 : 82}px)`,
+            overflow: "hidden",
+            boxSizing: "border-box",
+          }}
+        >
+          <header
+            style={{
+              background: "#fff",
+              borderBottom: `1px solid ${C.border}`,
+              padding: "12px clamp(14px, 1.8vw, 24px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              width: "100%",
+              minWidth: 0,
+              boxSizing: "border-box",
+            }}
+          >
             <div>
               <div style={{ fontSize: 14, fontWeight: 700 }}>{activeNav}</div>
               <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Dirección de Regularización Dominial • Base conectada a Supabase</div>
@@ -1934,7 +2294,18 @@ export default function App() {
             </div>
           </header>
 
-          <main style={{ flex: 1, padding: "20px 24px", maxWidth: 1500, width: "100%", boxSizing: "border-box" }}>
+          <main
+            style={{
+              flex: 1,
+              padding: "16px 16px 20px",
+              width: "100%",
+              minWidth: 0,
+              maxWidth: "100%",
+              boxSizing: "border-box",
+              overflowX: "hidden",
+              overflowY: "auto",
+            }}
+          >
             {error ? <div style={{ marginBottom: 16, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{error}</div> : null}
             {notice ? <div style={{ marginBottom: 16, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{notice}</div> : null}
             {accessSyncStyle ? <div style={{ ...accessSyncStyle, marginBottom: 16, borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{accessSyncStatus.text}</div> : null}
@@ -1944,8 +2315,8 @@ export default function App() {
               <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}` }}><EmptyBlock title="Cargando datos del sistema" text="Esperando respuesta de Supabase para usuarios y expedientes." /></div>
             ) : activeNav === "Dashboard" ? (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
-                  {[["Expedientes únicos", stats.total, "Mostrados en el panel"], ["En proceso", stats.proceso, "Seguimiento activo"], ["Casos críticos", stats.criticos, "Prioridad crítica"], ["Atrasados (+14d)", stats.atrasados, "Requieren revisión"]].map(([label, value, note]) => (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                  {[["Expedientes únicos", stats.total, "Mostrados en el panel"], ["Completos", stats.completos, "Con datos y adjuntos"], ["En proceso", stats.proceso, "Seguimiento activo"], ["Casos críticos", stats.criticos, "Prioridad crítica"], ["Atrasados (+14d)", stats.atrasados, "Requieren revisión"]].map(([label, value, note]) => (
                     <div key={label} style={{ background: "#fff", border: `1px solid ${C.border}`, padding: "14px 18px", borderRadius: 16 }}>
                       <div style={{ fontSize: 11, color: C.muted }}>{label}</div>
                       <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}>{value}</div>
@@ -1953,7 +2324,7 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr 1fr", gap: 14, marginTop: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, marginTop: 14 }}>
                   <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
                     <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>Ingreso actual</div>
                     <div style={{ marginTop: 12, fontSize: 18, fontWeight: 800 }}>{activeUser.nombre}</div>
@@ -1968,7 +2339,7 @@ export default function App() {
                   <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
                     <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>Importación masiva lista</div>
                     <div style={{ marginTop: 10, color: C.muted, fontSize: 13, lineHeight: 1.55 }}>Ya podés subir varios Excel desde el panel. El barrio se toma del nombre del archivo y la carga va directo a Supabase.</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginTop: 16 }}>
                       <div style={{ background: C.softBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}><div style={{ fontWeight: 700, fontSize: 13, color: C.indigo }}>Campos nuevos</div><div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>estado_civil<br />telefono<br />padron_numero<br />plano_url<br />notas</div></div>
                       <div style={{ background: C.softBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}><div style={{ fontWeight: 700, fontSize: 13, color: C.indigo }}>Cobertura actual</div><div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>Con plano: {data.filter((d) => (planosByExpediente[d.id] || []).length > 0 || cleanText(d.planoUrl)).length}<br />Con padrón: {data.filter((d) => cleanText(d.padronNumero)).length}<br />Con estado civil: {data.filter((d) => cleanText(d.estadoCivil)).length}<br />Usuarios cargados: {users.length}</div></div>
                     </div>
@@ -1979,7 +2350,7 @@ export default function App() {
               <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}`, padding: 22 }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: C.slate }}>Importar archivos Excel</div>
                 <div style={{ marginTop: 8, color: C.muted, fontSize: 13, lineHeight: 1.55 }}>Podés subir varios archivos .xlsx o .xls. El sistema toma el barrio desde el nombre del archivo y carga directo a Supabase. Los DNI repetidos se ignoran automáticamente.</div>
-                <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16 }}>
+                <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
                   <div style={{ border: `1px dashed ${C.border}`, borderRadius: 16, padding: 20, background: "#f8fafc" }}>
                     <div style={{ fontWeight: 700, color: C.slate }}>Carga directa</div>
                     <div style={{ marginTop: 8, color: C.muted, fontSize: 13, lineHeight: 1.65 }}>1. Seleccionás varios Excel<br />2. El sistema detecta columnas útiles<br />3. Limpia datos<br />4. Inserta todo en Supabase sin vista previa</div>
@@ -2001,49 +2372,104 @@ export default function App() {
                   <div style={{ marginTop: 18, background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
                     <div style={{ fontWeight: 800, color: C.slate }}>Última importación</div>
                     <div style={{ marginTop: 8, color: C.muted, fontSize: 13 }}>Archivos: {importSummary.totalFiles} • Registros cargados: {importSummary.totalRows} • Repetidos ignorados: {importSummary.ignoredDuplicates || 0}</div>
-                    <div style={{ marginTop: 12, display: "grid", gap: 8 }}>{importSummary.details.map((item) => <div key={item.fileName} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 12px", fontSize: 13 }}><strong>{item.fileName}</strong> — {item.count} registro(s) — {item.barrio}</div>)}</div>
+                    <div style={{ marginTop: 12, display: "grid", gap: 8 }}>{importSummary.details.map((item) => <div key={item.fileName} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 8px", fontSize: 13 }}><strong>{item.fileName}</strong> — {item.count} registro(s) — {item.barrio}</div>)}</div>
                   </div>
                 ) : null}
               </div>
             ) : (
               <>
-                <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: 16,
+                    border: `1px solid ${C.border}`,
+                    overflow: "hidden",
+                    width: "100%",
+                    maxWidth: "100%",
+                    boxSizing: "border-box",
+                  }}
+                >
                   <div style={{ padding: "14px 18px", borderBottom: "1px solid #f1f5f9" }}>
                     <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-                      <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+                      <div style={{ position: "relative", flex: 1, minWidth: 170 }}>
                         <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: C.dim, fontSize: 13 }}>🔍</span>
                         <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Buscar nombre, DNI, contacto, expediente, notas o responsable..." style={{ ...inputStyle, paddingLeft: 32 }} />
                       </div>
-                      <button onClick={() => { setSearch(""); setFEstado(""); setFArea(""); setFResp(""); setFLocalidad(""); setFPrioridad(""); setPage(1); }} style={btnGhost}>Limpiar filtros</button>
+                      <button onClick={() => { setSearch(""); setFEstado(""); setFArea(""); setFPrioridad(""); setFBarrio(""); setFCompletitud(""); setPage(1); }} style={btnGhost}>Limpiar filtros</button>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8 }}>
-                      <select value={fEstado} onChange={(e) => { setFEstado(e.target.value); setPage(1); }} style={inputStyle}><option value="">Todos los estados</option>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
-                      <select value={fArea} onChange={(e) => { setFArea(e.target.value); setPage(1); }} style={inputStyle}><option value="">Todas las áreas</option>{AREAS.filter(Boolean).map((a) => <option key={a} value={a}>{a}</option>)}</select>
-                      <select value={fResp} onChange={(e) => { setFResp(e.target.value); setPage(1); }} style={inputStyle}><option value="">Todos los responsables</option>{users.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}</select>
-                      <select value={fLocalidad} onChange={(e) => { setFLocalidad(e.target.value); setPage(1); }} style={inputStyle}><option value="">Todas las localidades</option>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
-                      <select value={fPrioridad} onChange={(e) => { setFPrioridad(e.target.value); setPage(1); }} style={inputStyle}><option value="">Todas las prioridades</option>{Object.entries(PRIORIDADES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
-                    </div>                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-                      <button onClick={() => setSortOrder("recent")} style={{ ...btnGhost, background: sortOrder === "recent" ? "#eff6ff" : "#fff", color: sortOrder === "recent" ? "#2563eb" : C.muted }}>Recientes</button>
-                      <button onClick={() => setSortOrder("az")} style={{ ...btnGhost, background: sortOrder === "az" ? "#eff6ff" : "#fff", color: sortOrder === "az" ? "#2563eb" : C.muted }}>Titular A-Z</button>
-                      <button onClick={() => setSortOrder("za")} style={{ ...btnGhost, background: sortOrder === "za" ? "#eff6ff" : "#fff", color: sortOrder === "za" ? "#2563eb" : C.muted }}>Titular Z-A</button>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                      <select value={fEstado} onChange={(e) => { setFEstado(e.target.value); setPage(1); }} style={{ ...inputStyle, width: "fit-content", minWidth: 180, flex: "0 1 190px" }}><option value="">Todos los estados</option>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
+                      <select value={fArea} onChange={(e) => { setFArea(e.target.value); setPage(1); }} style={{ ...inputStyle, width: "fit-content", minWidth: 180, flex: "0 1 190px" }}><option value="">Todas las áreas</option>{AREAS.filter(Boolean).map((a) => <option key={a} value={a}>{a}</option>)}</select>
+                      <select value={fBarrio} onChange={(e) => { setFBarrio(e.target.value); setPage(1); }} style={{ ...inputStyle, width: "fit-content", minWidth: 210, flex: "0 1 260px" }}>
+                        <option value="">Todos los barrios</option>
+                        {barrioFilterOptions.map((group) => (
+                          <optgroup key={group.localidad} label={group.localidad}>
+                            {group.items.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <select value={fPrioridad} onChange={(e) => { setFPrioridad(e.target.value); setPage(1); }} style={{ ...inputStyle, width: "fit-content", minWidth: 180, flex: "0 1 190px" }}><option value="">Todas las prioridades</option>{Object.entries(PRIORIDADES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
+                      <select value={fCompletitud} onChange={(e) => { setFCompletitud(e.target.value); setPage(1); }} style={{ ...inputStyle, width: "fit-content", minWidth: 190, flex: "0 1 210px" }}>
+                        <option value="">Toda completitud</option>
+                        <option value="alto">Carga alta</option>
+                        <option value="medio">Carga intermedia</option>
+                        <option value="bajo">Carga baja</option>
+                        <option value="con_archivos">Con archivos</option>
+                        <option value="sin_archivos">Sin archivos</option>
+                      </select>
                     </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 0, alignItems: "center" }}>
+                      <button onClick={() => setSortOrder("recent")} style={{ ...btnGhost, background: sortOrder === "recent" ? "#eff6ff" : "#fff", color: sortOrder === "recent" ? "#2563eb" : C.muted, padding: "8px 12px" }}>Recientes</button>
+                      <button onClick={() => setSortOrder("az")} style={{ ...btnGhost, background: sortOrder === "az" ? "#eff6ff" : "#fff", color: sortOrder === "az" ? "#2563eb" : C.muted, padding: "8px 12px" }}>Titular A-Z</button>
+                      <button onClick={() => setSortOrder("za")} style={{ ...btnGhost, background: sortOrder === "za" ? "#eff6ff" : "#fff", color: sortOrder === "za" ? "#2563eb" : C.muted, padding: "8px 12px" }}>Titular Z-A</button>
+                      <button onClick={() => setSortOrder("complete")} style={{ ...btnGhost, background: sortOrder === "complete" ? "#eff6ff" : "#fff", color: sortOrder === "complete" ? "#2563eb" : C.muted, padding: "8px 12px" }}>Más completos</button>
+                      <button onClick={toggleSelectPage} style={{ ...btnGhost, padding: "8px 12px" }}>{slice.every((item) => selectedExpedientes.includes(item.id)) && slice.length ? "Deseleccionar página" : "Seleccionar página"}</button>
+                      <button onClick={exportSelectedToPdf} style={{ ...btnPrimary, padding: "8px 12px" }}>Descargar PDF seleccionados</button>
+                    </div>
+                    {selectedExpedientes.length ? (
+                      <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: 10 }}>
+                        <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>{selectedExpedientes.length} expediente(s) seleccionados</div>
+                        <select value={bulkEstado} onChange={(e) => setBulkEstado(e.target.value)} style={{ ...compactInputStyle, width: 180 }}>
+                          <option value="">Cambiar estado masivo</option>
+                          {Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                        </select>
+                        <button onClick={applyBulkEstado} style={{ ...btnGhost, padding: "8px 10px" }}>Aplicar estado</button>
+                        <select value={bulkResponsable} onChange={(e) => setBulkResponsable(e.target.value)} style={{ ...compactInputStyle, width: 210 }}>
+                          <option value="">Asignar responsable masivo</option>
+                          {users.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}
+                        </select>
+                        <button onClick={applyBulkResponsable} style={{ ...btnGhost, padding: "8px 10px" }}>Aplicar responsable</button>
+                      </div>
+                    ) : null}
                   </div>
 
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1800, fontSize: 12 }}>
+                  <div
+                    style={{
+                      width: "100%",
+                      maxWidth: "100%",
+                      overflowX: "auto",
+                      overflowY: "auto",
+                      maxHeight: "calc(100vh - 265px)",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1640, fontSize: 11, tableLayout: "fixed" }}>
+                      <colgroup>
+                        {TABLE_COLGROUP.map((col) => <col key={col.key} style={{ width: col.width }} />)}
+                      </colgroup>
                       <thead>
-                        <tr style={{ borderBottom: "1px solid #f1f5f9", background: "#fafafa" }}>
-                          {["N° Expediente", "Titular", "DNI", "Contacto", "Estado civil", "Barrio", "N° de padrón", "Plano", "Estado", "Área", "Responsable", "Notas", "Acciones"].map((h) => <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: ".05em" }}>{h}</th>)}
+                        <tr style={{ borderBottom: "1px solid #f1f5f9", background: "#fafafa", position: "sticky", top: 0, zIndex: 2 }}>
+                          {["✓", "N° Expediente", "Titular", "DNI", "Contacto", "Estado civil", "Barrio", "N° de padrón", "Archivos", "Estado", "Área", "Responsable", "Notas", "Acciones"].map((h) => <th key={h} style={{ padding: "7px 6px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: ".05em", background: "#fafafa", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h}</th>)}
                         </tr>
                       </thead>
                       <tbody>
-                        {slice.length === 0 ? <tr><td colSpan={13}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp) => <ExpedienteRow key={exp.id} exp={exp} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} />)}
+                        {slice.length === 0 ? <tr><td colSpan={14}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp) => <ExpedienteRow key={exp.id} exp={exp} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} />)}
                       </tbody>
                     </table>
                   </div>
 
                   <div style={{ padding: "12px 18px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 12, color: C.muted }}>Mostrando {filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} a {Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length} registros únicos • Filas totales en base: {rawRowCount} • Duplicados ocultos: {hiddenDuplicateCount} • Página {currentPage} de {totalPages}</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>Mostrando {filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} a {Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length} registros únicos • Seleccionados: {selectedExpedientes.length} • Filas totales en base: {rawRowCount} • Duplicados ocultos: {hiddenDuplicateCount} • Página {currentPage} de {totalPages}</div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <button onClick={() => setPage(1)} style={btnGhost} disabled={currentPage === 1}>Primera</button>
                       <button onClick={() => setPage((p) => Math.max(1, p - 1))} style={btnGhost} disabled={currentPage === 1}>Anterior</button>
@@ -2076,8 +2502,9 @@ export default function App() {
         </div>
       </div>
 
-      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} />
+      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} />
       <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} />
     </div>
+    </>
   );
 }
