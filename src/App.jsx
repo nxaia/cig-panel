@@ -923,6 +923,30 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ fontSize: 26, color: C.slate, fontWeight: 800, marginTop: 6 }}>Banda del Río Salí</div>
           <div style={{ width: 92, height: 4, borderRadius: 999, background: "#14b8a6", margin: "20px auto 18px" }} />
           <div style={{ fontSize: 18, color: C.slate, fontWeight: 700 }}>Dirección de Regularización Dominial</div>
+          <div
+  style={{
+    width: 132,
+    height: 132,
+    margin: "20px auto 0",
+    borderRadius: 28,
+    background: "#fff",
+    border: `1px solid ${C.border}`,
+    boxShadow: "0 16px 40px rgba(15,23,42,.08)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  }}
+>
+  <img
+    src={logoArea}
+    alt="Logo área"
+    style={{
+      width: 102,
+      height: 102,
+      objectFit: "contain",
+    }}
+  />
+</div>
           <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 14, lineHeight: 1.55 }}>
             Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado para continuar.
           </div>
