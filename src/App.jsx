@@ -953,17 +953,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 transform: "translateY(-4px)",
               }}
             />
-            <div
-              style={{
-                position: "absolute",
-                left: 12,
-                right: 12,
-                bottom: 18,
-                height: 18,
-                background: "#fff",
-                borderRadius: 8,
-              }}
-            />
+           
           </div>
 
           <div style={{ marginTop: 12, fontSize: 12, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>DIRECCIÓN DE</div>
