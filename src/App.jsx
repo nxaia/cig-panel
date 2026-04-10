@@ -2226,8 +2226,6 @@ export default function App() {
   }
 
   return (
-    <>
-      <div style={{ position: "fixed", top: 10, right: 10, background: "#dc2626", color: "#fff", padding: "6px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,.15)" }}>BUILD VERCEL TEST</div>
     <div style={{ margin: 0, fontFamily: "Segoe UI, sans-serif", background: C.bg, color: C.text, minHeight: "100vh", width: "100%", overflowX: "hidden" }}>
       <div style={{ display: "flex", minHeight: "100vh", width: "100%" }}>
         <aside style={{ width: sidebarOpen ? 182 : 74, background: "#fff", borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh" }}>
@@ -2255,32 +2253,8 @@ export default function App() {
           </div>
         </aside>
 
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
-            width: `calc(100vw - ${sidebarOpen ? 196 : 82}px)`,
-            maxWidth: `calc(100vw - ${sidebarOpen ? 196 : 82}px)`,
-            overflow: "hidden",
-            boxSizing: "border-box",
-          }}
-        >
-          <header
-            style={{
-              background: "#fff",
-              borderBottom: `1px solid ${C.border}`,
-              padding: "12px clamp(14px, 1.8vw, 24px)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              width: "100%",
-              minWidth: 0,
-              boxSizing: "border-box",
-            }}
-          >
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, width: "100%", maxWidth: "none" }}>
+          <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, padding: "12px clamp(14px, 1.8vw, 24px)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%", boxSizing: "border-box" }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 700 }}>{activeNav}</div>
               <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Dirección de Regularización Dominial • Base conectada a Supabase</div>
@@ -2294,18 +2268,7 @@ export default function App() {
             </div>
           </header>
 
-          <main
-            style={{
-              flex: 1,
-              padding: "16px 16px 20px",
-              width: "100%",
-              minWidth: 0,
-              maxWidth: "100%",
-              boxSizing: "border-box",
-              overflowX: "hidden",
-              overflowY: "auto",
-            }}
-          >
+          <main style={{ flex: 1, padding: "16px 16px 20px", width: "100%", maxWidth: "none", boxSizing: "border-box", overflowX: "hidden" }}>
             {error ? <div style={{ marginBottom: 16, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{error}</div> : null}
             {notice ? <div style={{ marginBottom: 16, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{notice}</div> : null}
             {accessSyncStyle ? <div style={{ ...accessSyncStyle, marginBottom: 16, borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{accessSyncStatus.text}</div> : null}
@@ -2315,7 +2278,7 @@ export default function App() {
               <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}` }}><EmptyBlock title="Cargando datos del sistema" text="Esperando respuesta de Supabase para usuarios y expedientes." /></div>
             ) : activeNav === "Dashboard" ? (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
                   {[["Expedientes únicos", stats.total, "Mostrados en el panel"], ["Completos", stats.completos, "Con datos y adjuntos"], ["En proceso", stats.proceso, "Seguimiento activo"], ["Casos críticos", stats.criticos, "Prioridad crítica"], ["Atrasados (+14d)", stats.atrasados, "Requieren revisión"]].map(([label, value, note]) => (
                     <div key={label} style={{ background: "#fff", border: `1px solid ${C.border}`, padding: "14px 18px", borderRadius: 16 }}>
                       <div style={{ fontSize: 11, color: C.muted }}>{label}</div>
@@ -2324,7 +2287,7 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, marginTop: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginTop: 14 }}>
                   <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
                     <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>Ingreso actual</div>
                     <div style={{ marginTop: 12, fontSize: 18, fontWeight: 800 }}>{activeUser.nombre}</div>
@@ -2339,7 +2302,7 @@ export default function App() {
                   <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
                     <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>Importación masiva lista</div>
                     <div style={{ marginTop: 10, color: C.muted, fontSize: 13, lineHeight: 1.55 }}>Ya podés subir varios Excel desde el panel. El barrio se toma del nombre del archivo y la carga va directo a Supabase.</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginTop: 16 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 16 }}>
                       <div style={{ background: C.softBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}><div style={{ fontWeight: 700, fontSize: 13, color: C.indigo }}>Campos nuevos</div><div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>estado_civil<br />telefono<br />padron_numero<br />plano_url<br />notas</div></div>
                       <div style={{ background: C.softBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}><div style={{ fontWeight: 700, fontSize: 13, color: C.indigo }}>Cobertura actual</div><div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>Con plano: {data.filter((d) => (planosByExpediente[d.id] || []).length > 0 || cleanText(d.planoUrl)).length}<br />Con padrón: {data.filter((d) => cleanText(d.padronNumero)).length}<br />Con estado civil: {data.filter((d) => cleanText(d.estadoCivil)).length}<br />Usuarios cargados: {users.length}</div></div>
                     </div>
@@ -2350,7 +2313,7 @@ export default function App() {
               <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}`, padding: 22 }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: C.slate }}>Importar archivos Excel</div>
                 <div style={{ marginTop: 8, color: C.muted, fontSize: 13, lineHeight: 1.55 }}>Podés subir varios archivos .xlsx o .xls. El sistema toma el barrio desde el nombre del archivo y carga directo a Supabase. Los DNI repetidos se ignoran automáticamente.</div>
-                <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+                <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
                   <div style={{ border: `1px dashed ${C.border}`, borderRadius: 16, padding: 20, background: "#f8fafc" }}>
                     <div style={{ fontWeight: 700, color: C.slate }}>Carga directa</div>
                     <div style={{ marginTop: 8, color: C.muted, fontSize: 13, lineHeight: 1.65 }}>1. Seleccionás varios Excel<br />2. El sistema detecta columnas útiles<br />3. Limpia datos<br />4. Inserta todo en Supabase sin vista previa</div>
@@ -2378,17 +2341,7 @@ export default function App() {
               </div>
             ) : (
               <>
-                <div
-                  style={{
-                    background: "#fff",
-                    borderRadius: 16,
-                    border: `1px solid ${C.border}`,
-                    overflow: "hidden",
-                    width: "100%",
-                    maxWidth: "100%",
-                    boxSizing: "border-box",
-                  }}
-                >
+                <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden", width: "100%", boxSizing: "border-box" }}>
                   <div style={{ padding: "14px 18px", borderBottom: "1px solid #f1f5f9" }}>
                     <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
                       <div style={{ position: "relative", flex: 1, minWidth: 170 }}>
@@ -2443,17 +2396,8 @@ export default function App() {
                     ) : null}
                   </div>
 
-                  <div
-                    style={{
-                      width: "100%",
-                      maxWidth: "100%",
-                      overflowX: "auto",
-                      overflowY: "auto",
-                      maxHeight: "calc(100vh - 265px)",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1640, fontSize: 11, tableLayout: "fixed" }}>
+                  <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 265px)", width: "100%" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1480, fontSize: 11, tableLayout: "fixed" }}>
                       <colgroup>
                         {TABLE_COLGROUP.map((col) => <col key={col.key} style={{ width: col.width }} />)}
                       </colgroup>
@@ -2505,6 +2449,5 @@ export default function App() {
       <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} />
       <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} />
     </div>
-    </>
   );
 }
