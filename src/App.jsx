@@ -138,7 +138,6 @@ const LOGIN_USERS = [
   { id: "usuario", nombre: "Usuario", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
 
-const LOGIN_SESSION_KEY = "cig_panel_login_session_v2";
 
 const PAGE_SIZE = 5;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
@@ -1551,19 +1550,6 @@ export default function App() {
   }), [data, planosByExpediente]);
 
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LOGIN_SESSION_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed?.id) {
-        const loginUser = LOGIN_USERS.find((user) => user.id === parsed.id);
-        if (loginUser) {
-          setActiveUser({ ...loginUser, lastLoginAt: parsed.lastLoginAt || new Date().toISOString() });
-        }
-      }
-    } catch {}
-  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -1730,7 +1716,6 @@ export default function App() {
       setAccessHistory(nextHistory);
       const sessionUser = { ...selectedUser, lastLoginAt: entry.fecha_ingreso };
       setActiveUser(sessionUser);
-      localStorage.setItem(LOGIN_SESSION_KEY, JSON.stringify({ id: selectedUser.id, lastLoginAt: entry.fecha_ingreso }));
       setAccessSyncStatus(syncStatus);
       setLoginPassword("");
       setLoginLoading(false);
@@ -1804,7 +1789,6 @@ export default function App() {
     setAccessHistory(nextHistory);
     const sessionUser = { ...selectedUser, lastLoginAt: entry.fecha_ingreso };
     setActiveUser(sessionUser);
-    localStorage.setItem(LOGIN_SESSION_KEY, JSON.stringify({ id: selectedUser.id, lastLoginAt: entry.fecha_ingreso }));
     setAccessSyncStatus(syncStatus);
     setLoginPassword("");
     setLoginLoading(false);
@@ -2441,7 +2425,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setLoginPassword(""); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); localStorage.removeItem(LOGIN_SESSION_KEY); }} style={btnGhost}>Salir</button>
+              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setLoginPassword(""); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
