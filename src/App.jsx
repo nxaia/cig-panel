@@ -1173,6 +1173,10 @@ export default function App() {
   const fechaActual = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
   const usersMap = useMemo(() => buildUsersMap(users), [users]);
   const canEdit = Boolean(activeUser?.canEdit);
+  const selectedLoginProfile = useMemo(
+    () => loginProfiles.find((user) => user.id === selectedLoginUserId) || LOGIN_USERS.find((user) => user.id === selectedLoginUserId) || null,
+    [loginProfiles, selectedLoginUserId]
+  );
 
   const stats = useMemo(() => ({
     total: data.length,
