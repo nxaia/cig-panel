@@ -135,11 +135,13 @@ const BARRIOS = {
 const LOGIN_USERS = [
   { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
   { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
-  { id: "emanuel-aguilar", nombre: "Emanuel Aguilar", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
+  { id: "usuario", nombre: "Usuario", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
 
 const PAGE_SIZE = 5;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
+const PANEL_SESSION_KEY = "cig_panel_session_v1";
+const PANEL_PASSWORDS_FALLBACK_KEY = "cig_panel_passwords_fallback_v1";
 
 
 const TABLE_COLGROUP = [
@@ -539,6 +541,7 @@ function normalizeExpediente(row) {
 
 function buildUpdatePayload(partial) {
   const payload = {};
+  if (Object.prototype.hasOwnProperty.call(partial, "num")) payload.numero_expediente = cleanText(partial.num);
   if (Object.prototype.hasOwnProperty.call(partial, "titular")) payload.titular = normalizeTitular(partial.titular);
   if (Object.prototype.hasOwnProperty.call(partial, "dni")) payload.dni = cleanText(partial.dni);
   if (Object.prototype.hasOwnProperty.call(partial, "telefono")) payload.telefono = normalizePhone(partial.telefono);
@@ -725,6 +728,32 @@ function chunkArray(items, size) {
   return chunks;
 }
 
+async function hashPassword(value) {
+  const safeValue = String(value || "");
+  if (!safeValue) return "";
+  if (typeof window !== "undefined" && window.crypto?.subtle) {
+    const data = new TextEncoder().encode(safeValue);
+    const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  return safeValue;
+}
+
+function readJsonStorage(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonStorage(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
 
 async function fetchAllExpedientes() {
   if (!supabase) return { data: [], error: null };
@@ -877,7 +906,7 @@ function Doc({ doc }) {
   );
 }
 
-function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError }) {
+function LoginScreen({ selectedUserId, onSelectUser, password, onPasswordChange, onIngresar, loginLoading, loginError }) {
   return (
     <div
       style={{
@@ -958,7 +987,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ fontSize: 21, color: C.slate, fontWeight: 800, marginTop: 4 }}>Regularización Dominial y Hábitat</div>
 
           <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>
-            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado para continuar.
+            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
           </div>
 
           <div style={{ maxWidth: 480, margin: "20px auto 0", display: "grid", gap: 12 }}>
@@ -1003,6 +1032,20 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
             })}
           </div>
 
+          <div style={{ maxWidth: 480, margin: "16px auto 0", textAlign: "left" }}>
+            <div style={{ ...labelStyle, marginBottom: 8 }}>Contraseña</div>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              placeholder="Ingresá la contraseña"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !loginLoading && selectedUserId && password.trim()) onIngresar();
+              }}
+              style={{ ...inputStyle, background: "#fff", width: "100%" }}
+            />
+          </div>
+
           {loginError ? (
             <div
               style={{
@@ -1023,14 +1066,14 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ marginTop: 18 }}>
             <button
               onClick={onIngresar}
-              disabled={loginLoading || !selectedUserId}
+              disabled={loginLoading || !selectedUserId || !password.trim()}
               style={{
                 ...btnPrimary,
                 padding: "13px 28px",
                 fontSize: 15,
                 borderRadius: 12,
-                opacity: loginLoading || !selectedUserId ? 0.7 : 1,
-                cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
+                opacity: loginLoading || !selectedUserId || !password.trim() ? 0.7 : 1,
+                cursor: loginLoading || !selectedUserId || !password.trim() ? "not-allowed" : "pointer",
               }}
             >
               {loginLoading ? "Ingresando..." : "Ingresar al panel"}
@@ -1132,7 +1175,8 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
             </div>
           ) : null}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+            <div><div style={labelStyle}>N° de expediente</div><input value={draft.num} disabled={!canEdit} onChange={(e) => updateField("num", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>Titular</div><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>DNI</div><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>Contacto</div><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={inputStyle} /></div>
@@ -1376,7 +1420,15 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
         <input type="checkbox" checked={selected} onChange={() => onToggleSelect(exp.id)} />
       </td>
       <td style={{ padding: "8px 6px", width: 118 }}>
-        <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800 }}>{draft.num}</span>
+        {canEdit ? (
+          <input
+            value={draft.num}
+            onChange={(e) => updateField("num", e.target.value)}
+            style={{ ...compactInputStyle, fontFamily: "monospace", fontWeight: 800 }}
+          />
+        ) : (
+          <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800 }}>{draft.num}</span>
+        )}
         <div style={{ color: C.dim, fontSize: 11, marginTop: 6 }}>{draft.origenCarga}</div>
         <div style={{ marginTop: 8 }}><CompletenessBadge expediente={draft} attachments={planos} /></div>
       </td>
@@ -1478,6 +1530,7 @@ export default function App() {
   const [hiddenDuplicateCount, setHiddenDuplicateCount] = useState(0);
 
   const [selectedLoginUserId, setSelectedLoginUserId] = useState(LOGIN_USERS[0].id);
+  const [loginPassword, setLoginPassword] = useState("");
   const [activeUser, setActiveUser] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -1520,8 +1573,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const session = readJsonStorage(PANEL_SESSION_KEY, null);
+    if (!session?.userId) return;
+    const sessionUser = LOGIN_USERS.find((u) => u.id === session.userId);
+    if (!sessionUser) return;
+    setSelectedLoginUserId(sessionUser.id);
+    setActiveUser({
+      ...sessionUser,
+      lastLoginAt: session.lastLoginAt || new Date().toISOString(),
+    });
+  }, []);
+
+  useEffect(() => {
     if (activeUser) loadInitialData();
   }, [activeUser]);
+
+  useEffect(() => {
+    if (!notice && !error && !accessSyncStatus.text) return;
+    const timer = setTimeout(() => {
+      if (notice) setNotice("");
+      if (error) setError("");
+      if (accessSyncStatus.text) setAccessSyncStatus({ kind: "", text: "" });
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [notice, error, accessSyncStatus]);
 
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => clearTimeout(timer));
@@ -1624,10 +1699,17 @@ export default function App() {
     setRefreshing(false);
   }
 
+
   async function handleLogin() {
     const selectedUser = LOGIN_USERS.find((u) => u.id === selectedLoginUserId);
+    const plainPassword = String(loginPassword || "").trim();
+
     if (!selectedUser) {
       setLoginError("Seleccioná un usuario habilitado para ingresar.");
+      return;
+    }
+    if (!plainPassword) {
+      setLoginError("Ingresá la contraseña para continuar.");
       return;
     }
     if (!supabase) {
@@ -1639,29 +1721,95 @@ export default function App() {
     setLoginError("");
     setAccessSyncStatus({ kind: "", text: "" });
 
-    const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
+    const passwordHash = await hashPassword(plainPassword);
+    let authOk = false;
     let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
 
-    const insertResult = await supabase.from("panel_accesos").insert(entry);
-    if (insertResult.error) {
-      syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
-    }
-
-    const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
-    let nextHistory = [];
     try {
-      const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
-      const current = raw ? JSON.parse(raw) : [];
-      nextHistory = [localEntry, ...current].slice(0, 10);
-      localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
-    } catch {
-      nextHistory = [localEntry];
-    }
+      const { data: panelRow, error: panelError } = await supabase
+        .from("panel_usuarios")
+        .select("id, usuario_clave, nombre, password_hash, activo")
+        .eq("usuario_clave", selectedUser.id)
+        .maybeSingle();
 
-    setAccessHistory(nextHistory);
-    setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
-    setAccessSyncStatus(syncStatus);
-    setLoginLoading(false);
+      if (!panelError) {
+        if (!panelRow) {
+          const insertPayload = {
+            usuario_clave: selectedUser.id,
+            nombre: selectedUser.nombre,
+            email: `${selectedUser.id}@panel.local`,
+            rol: selectedUser.rol,
+            area: selectedUser.area,
+            can_edit: selectedUser.canEdit,
+            activo: true,
+            tecnico: selectedUser.tecnico,
+            password_hash: passwordHash,
+            password_set_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          const { error: insertError } = await supabase.from("panel_usuarios").insert(insertPayload);
+          if (!insertError) authOk = true;
+        } else if (panelRow.password_hash) {
+          authOk = panelRow.password_hash === passwordHash;
+        } else {
+          const { error: updateError } = await supabase
+            .from("panel_usuarios")
+            .update({
+              password_hash: passwordHash,
+              password_set_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", panelRow.id);
+          if (!updateError) authOk = true;
+        }
+      }
+
+      if (!authOk) {
+        const fallback = readJsonStorage(PANEL_PASSWORDS_FALLBACK_KEY, {});
+        if (!fallback[selectedUser.id]) {
+          fallback[selectedUser.id] = passwordHash;
+          writeJsonStorage(PANEL_PASSWORDS_FALLBACK_KEY, fallback);
+          authOk = true;
+          syncStatus = { kind: "warning", text: "Clave inicial guardada en este equipo. Pendiente sincronización central." };
+        } else if (fallback[selectedUser.id] === passwordHash) {
+          authOk = true;
+          syncStatus = { kind: "warning", text: "Ingreso validado con el registro local de este equipo." };
+        }
+      }
+
+      if (!authOk) {
+        setLoginError("La contraseña no coincide con la registrada para este usuario.");
+        setLoginLoading(false);
+        return;
+      }
+
+      const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
+      const insertResult = await supabase.from("panel_accesos").insert(entry);
+      if (insertResult.error) {
+        syncStatus = syncStatus.kind === "warning"
+          ? syncStatus
+          : { kind: "warning", text: "Ingreso validado. El registro central de acceso quedó pendiente." };
+      }
+
+      const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
+      const current = readJsonStorage(ACCESS_HISTORY_KEY, []);
+      const nextHistory = [localEntry, ...current].slice(0, 10);
+      writeJsonStorage(ACCESS_HISTORY_KEY, nextHistory);
+      setAccessHistory(nextHistory);
+
+      writeJsonStorage(PANEL_SESSION_KEY, {
+        userId: selectedUser.id,
+        lastLoginAt: entry.fecha_ingreso,
+      });
+
+      setLoginPassword("");
+      setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
+      setAccessSyncStatus(syncStatus);
+    } catch (err) {
+      setLoginError(err?.message || "No se pudo validar el ingreso.");
+    } finally {
+      setLoginLoading(false);
+    }
   }
 
   async function addExpediente(form) {
@@ -2256,7 +2404,17 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
+    return (
+      <LoginScreen
+        selectedUserId={selectedLoginUserId}
+        onSelectUser={setSelectedLoginUserId}
+        password={loginPassword}
+        onPasswordChange={setLoginPassword}
+        onIngresar={handleLogin}
+        loginLoading={loginLoading}
+        loginError={loginError}
+      />
+    );
   }
 
   return (
@@ -2295,7 +2453,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
+              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setLoginPassword(""); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); try { localStorage.removeItem(PANEL_SESSION_KEY); } catch {} }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
