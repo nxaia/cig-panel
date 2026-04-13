@@ -9,9 +9,6 @@ const supabase =
     : null;
 
 const PLANOS_BUCKET = "planos-expedientes";
-const MAX_PLANO_FILE_SIZE_MB = 15;
-const ALLOWED_PLANO_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg"];
-const ALLOWED_PLANO_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp"];
 
 const C = {
   bg: "#f5f7fa",
@@ -289,29 +286,6 @@ function truncateText(value, max = 70) {
   return `${text.slice(0, max)}…`;
 }
 
-function getFileExtension(fileName) {
-  return String(fileName || "").split(".").pop()?.toLowerCase() || "";
-}
-
-function isAllowedPlanoFile(file) {
-  if (!file) return false;
-  const extension = getFileExtension(file.name);
-  return ALLOWED_PLANO_MIME_TYPES.includes(file.type) || ALLOWED_PLANO_EXTENSIONS.includes(extension);
-}
-
-function buildPlanoPublicUrl(filePath) {
-  if (!supabase || !filePath) return "";
-  const { data } = supabase.storage.from(PLANOS_BUCKET).getPublicUrl(filePath);
-  return data?.publicUrl || "";
-}
-
-function formatFileSize(bytes) {
-  const size = Number(bytes || 0);
-  if (!size) return "—";
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
-}
-
 function normalizeExpediente(row) {
   return {
     id: row.id,
@@ -322,8 +296,7 @@ function normalizeExpediente(row) {
     barrio: row.barrio || "",
     estadoCivil: row.estado_civil || "",
     padronNumero: row.padron_numero || "",
-    planoUrl: row.plano_url || (row.plano_path ? buildPlanoPublicUrl(row.plano_path) : ""),
-    planoPath: row.plano_path || "",
+    planoUrl: row.plano_url || "",
     estado: row.estado || "pendiente",
     area: row.area_actual || "",
     resp: row.responsable_id || "",
@@ -333,7 +306,7 @@ function normalizeExpediente(row) {
     prio: row.prioridad || "baja",
     observaciones: row.observaciones || "",
     notas: row.notas || "",
-    editableTecnico: row.editableTecnico ?? row.editable_tecnico ?? true,
+    editableTecnico: row.editable_tecnico ?? true,
     origenCarga: row.origen_carga || "manual",
   };
 }
@@ -348,7 +321,6 @@ function buildUpdatePayload(partial) {
   if (Object.prototype.hasOwnProperty.call(partial, "estadoCivil")) payload.estado_civil = cleanText(partial.estadoCivil);
   if (Object.prototype.hasOwnProperty.call(partial, "padronNumero")) payload.padron_numero = cleanText(partial.padronNumero);
   if (Object.prototype.hasOwnProperty.call(partial, "planoUrl")) payload.plano_url = cleanText(partial.planoUrl);
-  if (Object.prototype.hasOwnProperty.call(partial, "planoPath")) payload.plano_path = cleanText(partial.planoPath);
   if (Object.prototype.hasOwnProperty.call(partial, "estado")) payload.estado = partial.estado;
   if (Object.prototype.hasOwnProperty.call(partial, "area")) payload.area_actual = partial.area;
   if (Object.prototype.hasOwnProperty.call(partial, "resp")) payload.responsable_id = partial.resp || null;
@@ -679,19 +651,17 @@ function Doc({ doc }) {
   );
 }
 
-function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError }) {
+function LoginScreen({ selectedUserId, onSelectUser, onIngresar, password, onPasswordChange, loginLoading, loginError }) {
   return (
     <div
       style={{
         minHeight: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
-        alignItems: "flex-start",
+        alignItems: "center",
         justifyContent: "center",
-        padding: 16,
+        padding: 24,
         boxSizing: "border-box",
-        overflowX: "hidden",
-        overflowY: "auto",
       }}
     >
       <div
@@ -700,12 +670,9 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           maxWidth: 760,
           background: "#fff",
           borderRadius: 28,
-          overflowX: "hidden",
-          overflowY: "auto",
+          overflow: "hidden",
           boxShadow: "0 24px 80px rgba(15,23,42,.12)",
           border: `1px solid ${C.border}`,
-          maxHeight: "calc(100vh - 32px)",
-          margin: "auto 0",
         }}
       >
         <div style={{ height: 8, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
@@ -732,7 +699,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ width: 92, height: 4, borderRadius: 999, background: "#14b8a6", margin: "20px auto 18px" }} />
           <div style={{ fontSize: 18, color: C.slate, fontWeight: 700 }}>Dirección de Regularización Dominial</div>
           <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 14, lineHeight: 1.55 }}>
-            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado para continuar.
+            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
           </div>
 
           <div style={{ maxWidth: 480, margin: "28px auto 0", display: "grid", gap: 12 }}>
@@ -777,6 +744,20 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
             })}
           </div>
 
+          <div style={{ maxWidth: 480, margin: "18px auto 0", textAlign: "left" }}>
+            <div style={labelStyle}>Contraseña</div>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onIngresar();
+              }}
+              placeholder="Ingresá la contraseña"
+              style={{ ...inputStyle, background: "#fff" }}
+            />
+          </div>
+
           {loginError ? (
             <div
               style={{
@@ -797,14 +778,14 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ marginTop: 24 }}>
             <button
               onClick={onIngresar}
-              disabled={loginLoading || !selectedUserId}
+              disabled={loginLoading || !selectedUserId || !password.trim()}
               style={{
                 ...btnPrimary,
                 padding: "13px 28px",
                 fontSize: 15,
                 borderRadius: 12,
-                opacity: loginLoading || !selectedUserId ? 0.7 : 1,
-                cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
+                opacity: loginLoading || !selectedUserId || !password.trim() ? 0.7 : 1,
+                cursor: loginLoading || !selectedUserId || !password.trim() ? "not-allowed" : "pointer",
               }}
             >
               {loginLoading ? "Ingresando..." : "Ingresar al panel"}
@@ -865,31 +846,28 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
           margin: "0 16px",
           overflow: "hidden",
           boxShadow: "0 20px 60px rgba(0,0,0,.15)",
-          maxHeight: "92vh",
-          display: "flex",
-          flexDirection: "column",
         }}
       >
         <div style={{ background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", padding: "22px 24px", color: "#fff" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ minWidth: 260 }}>
+            <div style={{ minWidth: 280 }}>
               <div style={{ fontSize: 10, color: "#bae6fd", fontWeight: 600, textTransform: "uppercase" }}>Expediente</div>
               {canEdit ? (
                 <input
                   value={draft.num}
                   onChange={(e) => updateField("num", e.target.value)}
                   style={{
-                    width: "100%",
                     marginTop: 6,
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid rgba(255,255,255,.35)",
+                    width: "100%",
+                    maxWidth: 320,
                     background: "rgba(255,255,255,.16)",
+                    border: "1px solid rgba(255,255,255,.35)",
                     color: "#fff",
+                    borderRadius: 10,
+                    padding: "10px 12px",
                     fontSize: 18,
                     fontWeight: 700,
                     outline: "none",
-                    boxSizing: "border-box",
                   }}
                 />
               ) : (
@@ -904,10 +882,9 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
           </div>
         </div>
 
-        <div style={{ padding: 24, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, overflowY: "auto" }}>
+        <div style={{ padding: 24, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
           <div><div style={labelStyle}>Titular</div><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={inputStyle} /></div>
           <div><div style={labelStyle}>DNI</div><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={inputStyle} /></div>
-          <div><div style={labelStyle}>N° de expediente</div><input value={draft.num} disabled={!canEdit} onChange={(e) => updateField("num", e.target.value)} style={inputStyle} /></div>
           <div><div style={labelStyle}>Contacto</div><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={inputStyle} /></div>
           <div><div style={labelStyle}>Estado civil</div><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={inputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></div>
           <div><div style={labelStyle}>Localidad</div><select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={inputStyle}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select></div>
@@ -925,7 +902,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
               {canEdit ? (
                 <label style={{ ...btnGhost, display: "inline-flex", alignItems: "center", gap: 8, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
-                  {uploadingPlano ? "Subiendo..." : "Subir imagen del plano"}
+                  {uploadingPlano ? "Subiendo..." : "Subir plano (PDF o imagen)"}
                   <input
                     type="file"
                     accept="image/*,.pdf"
@@ -1155,6 +1132,7 @@ export default function App() {
   const [hiddenDuplicateCount, setHiddenDuplicateCount] = useState(0);
 
   const [selectedLoginUserId, setSelectedLoginUserId] = useState(LOGIN_USERS[0].id);
+  const [loginPassword, setLoginPassword] = useState("");
   const [activeUser, setActiveUser] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -1255,6 +1233,14 @@ export default function App() {
       setLoginError("Faltan las variables de entorno de Supabase.");
       return;
     }
+    if (!loginPassword.trim()) {
+      setLoginError("Ingresá la contraseña para continuar.");
+      return;
+    }
+    if ((LOGIN_PASSWORDS[selectedUser.id] || "") !== loginPassword) {
+      setLoginError("Contraseña incorrecta.");
+      return;
+    }
 
     setLoginLoading(true);
     setLoginError("");
@@ -1282,7 +1268,9 @@ export default function App() {
     setAccessHistory(nextHistory);
     setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
     setAccessSyncStatus(syncStatus);
+    setLoginPassword("");
     setLoginLoading(false);
+    await logAudit("login", "panel", null, { usuario: selectedUser.id }, selectedUser);
   }
 
   async function addExpediente(form) {
@@ -1300,7 +1288,6 @@ export default function App() {
       estado_civil: cleanText(form.estadoCivil),
       padron_numero: cleanText(form.padronNumero),
       plano_url: "",
-      plano_path: "",
       estado: form.estado,
       area_actual: form.area,
       responsable_id: form.resp || null,
@@ -1326,6 +1313,7 @@ export default function App() {
     setNuevoOpen(false);
     setActiveNav("Expedientes");
     setNotice("Expediente creado correctamente.");
+    await logAudit("crear_expediente", "expedientes", inserted.id, { numero_expediente: inserted.numero_expediente });
     setSaving(false);
   }
 
@@ -1368,11 +1356,12 @@ export default function App() {
   async function uploadPlanoFile(expedienteId, file) {
     if (!supabase || !file || !canEdit) return;
 
-    if (!isAllowedPlanoFile(file)) {
-      setError("Formato no permitido. Subí PDF, JPG, PNG o WEBP.");
+    const extension = getFileExtension(file.name) || "bin";
+    const isAllowed = ["pdf", "jpg", "jpeg", "png", "webp"].includes(extension) || ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg"].includes(file.type);
+    if (!isAllowed) {
+      setError("Formato no permitido. Subí PDF, JPG, JPEG, PNG o WEBP.");
       return;
     }
-
     if (file.size > MAX_PLANO_FILE_SIZE_MB * 1024 * 1024) {
       setError(`El archivo supera el límite de ${MAX_PLANO_FILE_SIZE_MB} MB.`);
       return;
@@ -1383,41 +1372,35 @@ export default function App() {
     setNotice("");
 
     try {
-      const extension = getFileExtension(file.name) || "bin";
-      const safeBaseName = String(file.name || "archivo")
-        .replace(/\.[^.]+$/, "")
-        .replace(/[^a-zA-Z0-9_-]/g, "-")
-        .replace(/-+/g, "-")
-        .slice(0, 60) || "archivo";
-      const filePath = `${expedienteId}/${Date.now()}-${safeBaseName}.${extension}`;
+      const safeName = `${Date.now()}-${String(file.name).replace(/[^a-zA-Z0-9_.-]/g, "-")}`;
+      const filePath = `${expedienteId}/${safeName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from(PLANOS_BUCKET)
-        .upload(filePath, file, {
-          upsert: true,
-          contentType: file.type || (extension === "pdf" ? "application/pdf" : undefined),
-        });
-
+      const { error: uploadError } = await supabase.storage.from(PLANOS_BUCKET).upload(filePath, file, {
+        upsert: true,
+        contentType: file.type || undefined,
+      });
       if (uploadError) throw uploadError;
 
-      const publicUrl = buildPlanoPublicUrl(filePath);
-      const payload = buildUpdatePayload({ planoUrl: publicUrl, planoPath: filePath });
+      const { data: publicData } = supabase.storage.from(PLANOS_BUCKET).getPublicUrl(filePath);
+      const publicUrl = publicData?.publicUrl || "";
 
-      const { data: updated, error: updateError } = await supabase
+      const { error: dbError } = await supabase
         .from("expedientes")
-        .update(payload)
-        .eq("id", expedienteId)
-        .select("*")
-        .single();
+        .update({
+          plano_url: publicUrl,
+          plano_path: filePath,
+          ultima_actualizacion: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", expedienteId);
+      if (dbError) throw dbError;
 
-      if (updateError) throw updateError;
-
-      const normalized = normalizeExpediente(updated);
-      setData((prev) => prev.map((item) => (item.id === expedienteId ? normalized : item)));
-      setModalItem((prev) => (prev && prev.id === expedienteId ? normalized : prev));
+      setData((prev) => prev.map((item) => item.id === expedienteId ? { ...item, planoUrl: publicUrl, planoPath: filePath, upd: new Date().toISOString() } : item));
+      setModalItem((prev) => prev && prev.id === expedienteId ? { ...prev, planoUrl: publicUrl, planoPath: filePath, upd: new Date().toISOString() } : prev);
       setNotice("Plano subido correctamente.");
+      await logAudit("subir_plano", "expedientes", expedienteId, { nombre: file.name, tipo: file.type || extension, path: filePath });
     } catch (err) {
-      setError(`No se pudo subir el plano: ${err.message}`);
+      setError(`No se pudo subir el plano: ${err.message || "error desconocido"}`);
     } finally {
       setUploadingPlanoId("");
     }
@@ -1438,6 +1421,7 @@ export default function App() {
     setData((prev) => prev.filter((row) => row.id !== item.id));
     setModalItem((prev) => (prev?.id === item.id ? null : prev));
     setNotice(`Expediente ${item.num} eliminado correctamente.`);
+    await logAudit("eliminar_expediente", "expedientes", item.id, { numero_expediente: item.num });
   }
 
 
@@ -1533,7 +1517,6 @@ export default function App() {
         estado_civil: cleanText(row.estadoCivil),
         padron_numero: cleanText(row.padronNumero),
         plano_url: "",
-        plano_path: "",
         estado: "revision_inicial",
         area_actual: "Mesa de Entradas",
         responsable_id: null,
@@ -1562,6 +1545,7 @@ export default function App() {
       setImportFiles([]);
       setNotice(`Importación completada. Se cargaron ${insertedCount} expedientes y se ignoraron ${ignoredDuplicates} repetidos por DNI o por titular + padrón.`);
       setActiveNav("Expedientes");
+      await logAudit("importar_excel", "expedientes", null, { cargados: insertedCount, ignorados: ignoredDuplicates, archivos: importFiles.map((f) => f.name) });
     } catch (err) {
       setError(`No se pudo importar el Excel: ${err.message}`);
     }
@@ -1621,7 +1605,7 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
+    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} password={loginPassword} onPasswordChange={setLoginPassword} loginLoading={loginLoading} loginError={loginError} />;
   }
 
   return (
@@ -1660,7 +1644,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
+              <button onClick={async () => { await logAudit("logout", "panel", null, { usuario: activeUser?.id || null }); setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setLoginPassword(""); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
