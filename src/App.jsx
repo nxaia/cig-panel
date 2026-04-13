@@ -135,7 +135,7 @@ const BARRIOS = {
 const LOGIN_USERS = [
   { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
   { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
-  { id: "emanuel-aguilar", nombre: "Emanuel Aguilar", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
+  { id: "emanuel-aguilar", nombre: "Usuario", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
 
 const PAGE_SIZE = 5;
@@ -895,6 +895,7 @@ function Doc({ doc }) {
 }
 
 function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange }) {
+  const [showPassword, setShowPassword] = useState(false);
   return (
     <div
       style={{
@@ -1023,50 +1024,79 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
 
           <div style={{ maxWidth: 480, margin: "16px auto 0", textAlign: "left" }}>
             <div style={{ ...labelStyle, marginBottom: 6 }}>Contraseña</div>
-            <input
-              type="password"
-              value={loginPassword}
-              onChange={(e) => onPasswordChange(e.target.value)}
-              placeholder="Ingresá la contraseña"
-              style={{ ...inputStyle, background: "#fff" }}
-            />
-            <div style={{ marginTop: 8, fontSize: 12, color: C.dim }}>
-              Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Usuario entra solo en modo consulta.
-            </div>
-          </div>
-
-          {loginError ? (
-            <div
-              style={{
-                maxWidth: 480,
-                margin: "14px auto 0",
-                background: "#fef2f2",
-                color: "#991b1b",
-                border: "1px solid #fecaca",
-                borderRadius: 12,
-                padding: "12px 14px",
-                fontSize: 13,
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!loginLoading && selectedUserId) onIngresar();
               }}
             >
-              {loginError}
-            </div>
-          ) : null}
+              <div style={{ position: "relative" }}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={loginPassword}
+                  onChange={(e) => onPasswordChange(e.target.value)}
+                  placeholder="Ingresá la contraseña"
+                  style={{ ...inputStyle, background: "#fff", paddingRight: 44 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    color: C.muted,
+                    fontSize: 18,
+                    lineHeight: 1,
+                    padding: 0,
+                  }}
+                >
+                  {showPassword ? "🙈" : "👁"}
+                </button>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12, color: C.dim }}>
+                Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Usuario entra solo en modo consulta.
+              </div>
 
-          <div style={{ marginTop: 18 }}>
-            <button
-              onClick={onIngresar}
-              disabled={loginLoading || !selectedUserId}
-              style={{
-                ...btnPrimary,
-                padding: "13px 28px",
-                fontSize: 15,
-                borderRadius: 12,
-                opacity: loginLoading || !selectedUserId ? 0.7 : 1,
-                cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
-              }}
-            >
-              {loginLoading ? "Ingresando..." : "Ingresar al panel"}
-            </button>
+              {loginError ? (
+                <div
+                  style={{
+                    maxWidth: 480,
+                    margin: "14px auto 0",
+                    background: "#fef2f2",
+                    color: "#991b1b",
+                    border: "1px solid #fecaca",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                    fontSize: 13,
+                  }}
+                >
+                  {loginError}
+                </div>
+              ) : null}
+
+              <div style={{ marginTop: 18 }}>
+                <button
+                  type="submit"
+                  disabled={loginLoading || !selectedUserId}
+                  style={{
+                    ...btnPrimary,
+                    padding: "13px 28px",
+                    fontSize: 15,
+                    borderRadius: 12,
+                    opacity: loginLoading || !selectedUserId ? 0.7 : 1,
+                    cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {loginLoading ? "Ingresando..." : "Ingresar al panel"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
