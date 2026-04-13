@@ -133,14 +133,13 @@ const BARRIOS = {
 };
 
 const LOGIN_USERS = [
-  { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true, email: "estela@panel.local" },
-  { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true, email: "carlos@panel.local" },
-  { id: "usuario", nombre: "Usuario", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false, email: "usuario@panel.local" },
+  { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
+  { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
+  { id: "emanuel-aguilar", nombre: "Emanuel Aguilar", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
 
 const PAGE_SIZE = 5;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
-const PANEL_SESSION_KEY = "cig_panel_session_v1";
 
 
 const TABLE_COLGROUP = [
@@ -215,22 +214,6 @@ const labelStyle = {
   letterSpacing: ".05em",
   marginBottom: 3,
 };
-
-async function hashPassword(value) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(String(value || ""));
-  const digest = await window.crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function safeJsonParse(value, fallback = null) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-}
-
 
 function EmptyBlock({ title, text, action = null }) {
   return (
@@ -556,7 +539,6 @@ function normalizeExpediente(row) {
 
 function buildUpdatePayload(partial) {
   const payload = {};
-  if (Object.prototype.hasOwnProperty.call(partial, "num")) payload.numero_expediente = cleanText(partial.num);
   if (Object.prototype.hasOwnProperty.call(partial, "titular")) payload.titular = normalizeTitular(partial.titular);
   if (Object.prototype.hasOwnProperty.call(partial, "dni")) payload.dni = cleanText(partial.dni);
   if (Object.prototype.hasOwnProperty.call(partial, "telefono")) payload.telefono = normalizePhone(partial.telefono);
@@ -895,11 +877,11 @@ function Doc({ doc }) {
   );
 }
 
-function LoginScreen({ selectedUserId, onSelectUser, loginPassword, onChangePassword, onIngresar, loginLoading, loginError }) {
+function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError }) {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        height: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
         alignItems: "center",
@@ -915,10 +897,10 @@ function LoginScreen({ selectedUserId, onSelectUser, loginPassword, onChangePass
           maxWidth: 760,
           background: "#fff",
           borderRadius: 28,
-          overflowX: "hidden",
+          overflow: "hidden",
           boxShadow: "0 24px 80px rgba(15,23,42,.12)",
           border: `1px solid ${C.border}`,
-          margin: "0 auto",
+          maxHeight: "calc(100vh - 32px)",
         }}
       >
         <div style={{ height: 8, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
@@ -976,7 +958,7 @@ function LoginScreen({ selectedUserId, onSelectUser, loginPassword, onChangePass
           <div style={{ fontSize: 21, color: C.slate, fontWeight: 800, marginTop: 4 }}>Regularización Dominial y Hábitat</div>
 
           <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>
-            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
+            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado para continuar.
           </div>
 
           <div style={{ maxWidth: 480, margin: "20px auto 0", display: "grid", gap: 12 }}>
@@ -1021,17 +1003,6 @@ function LoginScreen({ selectedUserId, onSelectUser, loginPassword, onChangePass
             })}
           </div>
 
-          <div style={{ maxWidth: 480, margin: "18px auto 0", textAlign: "left" }}>
-            <div style={{ ...labelStyle, marginBottom: 6 }}>Contraseña</div>
-            <input
-              type="password"
-              value={loginPassword}
-              onChange={(e) => onChangePassword(e.target.value)}
-              placeholder="Ingresá la contraseña"
-              style={{ ...inputStyle, background: "#fff" }}
-            />
-          </div>
-
           {loginError ? (
             <div
               style={{
@@ -1052,14 +1023,14 @@ function LoginScreen({ selectedUserId, onSelectUser, loginPassword, onChangePass
           <div style={{ marginTop: 18 }}>
             <button
               onClick={onIngresar}
-              disabled={loginLoading || !selectedUserId || !cleanText(loginPassword)}
+              disabled={loginLoading || !selectedUserId}
               style={{
                 ...btnPrimary,
                 padding: "13px 28px",
                 fontSize: 15,
                 borderRadius: 12,
-                opacity: loginLoading || !selectedUserId || !cleanText(loginPassword) ? 0.7 : 1,
-                cursor: loginLoading || !selectedUserId || !cleanText(loginPassword) ? "not-allowed" : "pointer",
+                opacity: loginLoading || !selectedUserId ? 0.7 : 1,
+                cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
               }}
             >
               {loginLoading ? "Ingresando..." : "Ingresar al panel"}
@@ -1162,7 +1133,6 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
           ) : null}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-            <div><div style={labelStyle}>Número de expediente</div><input value={draft.num} disabled={!canEdit} onChange={(e) => updateField("num", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>Titular</div><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>DNI</div><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>Contacto</div><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={inputStyle} /></div>
@@ -1508,7 +1478,6 @@ export default function App() {
   const [hiddenDuplicateCount, setHiddenDuplicateCount] = useState(0);
 
   const [selectedLoginUserId, setSelectedLoginUserId] = useState(LOGIN_USERS[0].id);
-  const [loginPassword, setLoginPassword] = useState("");
   const [activeUser, setActiveUser] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -1548,32 +1517,7 @@ export default function App() {
     } catch {
       setAccessHistory([]);
     }
-
-    const storedSession = safeJsonParse(localStorage.getItem(PANEL_SESSION_KEY), null);
-    if (storedSession?.userId) {
-      const matched = LOGIN_USERS.find((user) => user.id === storedSession.userId);
-      if (matched) {
-        setActiveUser({ ...matched, lastLoginAt: storedSession.lastLoginAt || new Date().toISOString() });
-        setSelectedLoginUserId(matched.id);
-      }
-    }
   }, []);
-
-  useEffect(() => {
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-    const previousBodyOverflow = document.body.style.overflow;
-    if (!activeUser) {
-      document.documentElement.style.overflow = "hidden";
-      document.body.style.overflow = "hidden";
-    } else {
-      document.documentElement.style.overflow = "";
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.documentElement.style.overflow = previousHtmlOverflow;
-      document.body.style.overflow = previousBodyOverflow;
-    };
-  }, [activeUser]);
 
   useEffect(() => {
     if (activeUser) loadInitialData();
@@ -1680,22 +1624,6 @@ export default function App() {
     setRefreshing(false);
   }
 
-
-  async function safeAuditLog(action, moduleName, registroId = "", detalle = "") {
-    if (!supabase || !activeUser) return;
-    try {
-      await supabase.from("panel_auditoria").insert({
-        usuario_clave: activeUser.id,
-        usuario_nombre: activeUser.nombre,
-        accion: action,
-        modulo: moduleName,
-        registro_id: registroId ? String(registroId) : "",
-        detalle,
-      });
-    } catch {
-    }
-  }
-
   async function handleLogin() {
     const selectedUser = LOGIN_USERS.find((u) => u.id === selectedLoginUserId);
     if (!selectedUser) {
@@ -1706,70 +1634,34 @@ export default function App() {
       setLoginError("Faltan las variables de entorno de Supabase.");
       return;
     }
-    if (!cleanText(loginPassword)) {
-      setLoginError("Ingresá la contraseña.");
-      return;
-    }
 
     setLoginLoading(true);
     setLoginError("");
     setAccessSyncStatus({ kind: "", text: "" });
 
-    try {
-      const passwordHash = await hashPassword(loginPassword);
-      const { data: rpcData, error: rpcError } = await supabase.rpc("panel_login_password", {
-        p_usuario_clave: selectedUser.id,
-        p_password_hash: passwordHash,
-      });
+    const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
+    let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
 
-      if (rpcError) {
-        throw new Error(`No se pudo validar el acceso: ${rpcError.message}`);
-      }
-
-      const resultRow = Array.isArray(rpcData) ? rpcData[0] : rpcData;
-      if (!resultRow) {
-        throw new Error("No se encontró respuesta del sistema de acceso.");
-      }
-      if (!resultRow.ok) {
-        throw new Error(resultRow.message || "No se pudo iniciar sesión.");
-      }
-
-      const entry = { nombre: resultRow.nombre || selectedUser.nombre, rol: resultRow.rol || selectedUser.rol, fecha_ingreso: new Date().toISOString() };
-      let syncStatus = { kind: "success", text: resultRow.password_initialized ? "Contraseña creada y acceso registrado correctamente." : "Ingreso registrado correctamente en el sistema central." };
-
-      try {
-        const insertResult = await supabase.from("panel_accesos").insert(entry);
-        if (insertResult.error) {
-          syncStatus = { kind: "warning", text: resultRow.password_initialized ? "Contraseña creada. Pendiente registro central de acceso." : "Ingreso validado. Pendiente registro central." };
-        }
-      } catch {
-        syncStatus = { kind: "warning", text: resultRow.password_initialized ? "Contraseña creada. Pendiente registro central de acceso." : "Ingreso validado. Pendiente registro central." };
-      }
-
-      const localEntry = { ...entry, tecnico: Boolean(resultRow.tecnico ?? selectedUser.tecnico), area: resultRow.area || selectedUser.area };
-      const current = safeJsonParse(localStorage.getItem(ACCESS_HISTORY_KEY), []) || [];
-      const nextHistory = [localEntry, ...current].slice(0, 10);
-      localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
-      setAccessHistory(nextHistory);
-
-      const nextUser = {
-        ...selectedUser,
-        nombre: resultRow.nombre || selectedUser.nombre,
-        rol: resultRow.rol || selectedUser.rol,
-        area: resultRow.area || selectedUser.area,
-        tecnico: Boolean(resultRow.tecnico ?? selectedUser.tecnico),
-        canEdit: Boolean(resultRow.can_edit ?? selectedUser.canEdit),
-        lastLoginAt: entry.fecha_ingreso,
-      };
-      setActiveUser(nextUser);
-      localStorage.setItem(PANEL_SESSION_KEY, JSON.stringify({ userId: selectedUser.id, lastLoginAt: entry.fecha_ingreso }));
-      setAccessSyncStatus(syncStatus);
-      setLoginPassword("");
-    } catch (err) {
-      setLoginError(err.message || "No se pudo iniciar sesión.");
-    } finally {
-      setLoginLoading(false);
+    const insertResult = await supabase.from("panel_accesos").insert(entry);
+    if (insertResult.error) {
+      syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
     }
+
+    const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
+    let nextHistory = [];
+    try {
+      const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
+      const current = raw ? JSON.parse(raw) : [];
+      nextHistory = [localEntry, ...current].slice(0, 10);
+      localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
+    } catch {
+      nextHistory = [localEntry];
+    }
+
+    setAccessHistory(nextHistory);
+    setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
+    setAccessSyncStatus(syncStatus);
+    setLoginLoading(false);
   }
 
   async function addExpediente(form) {
@@ -1813,7 +1705,6 @@ export default function App() {
     setNuevoOpen(false);
     setActiveNav("Expedientes");
     setNotice("Expediente creado correctamente.");
-    await safeAuditLog("crear", "expedientes", inserted?.id, payload.numero_expediente || "");
     setSaving(false);
   }
 
@@ -1839,7 +1730,6 @@ export default function App() {
     const merged = latestPlano ? { ...normalized, planoPath: latestPlano.archivoPath || normalized.planoPath, planoUrl: latestPlano.publicUrl || normalized.planoUrl } : normalized;
     setData((prev) => prev.map((item) => (item.id === expedienteId ? merged : item)));
     setModalItem((prev) => (prev && prev.id === expedienteId ? merged : prev));
-    await safeAuditLog("editar", "expedientes", expedienteId, Object.keys(partial).join(", "));
     setSavingField("");
   }
 
@@ -1945,7 +1835,6 @@ export default function App() {
       setData((prev) => prev.map((item) => (item.id === expedienteId ? mergedExpediente : item)));
       setModalItem((prev) => (prev && prev.id === expedienteId ? mergedExpediente : prev));
       setNotice(files.length === 1 ? "Archivo subido correctamente." : `Se subieron ${files.length} archivos correctamente.`);
-      await safeAuditLog("subir_archivo", "expediente_planos", expedienteId, files.map((file) => file.name).join(", "));
     } catch (err) {
       setError(err.message || "No se pudo subir el plano.");
     } finally {
@@ -2010,7 +1899,6 @@ export default function App() {
       setData((prev) => prev.map((item) => (item.id === expedienteId ? mergedExpediente : item)));
       setModalItem((prev) => (prev && prev.id === expedienteId ? mergedExpediente : prev));
       setNotice("Plano eliminado correctamente.");
-      await safeAuditLog("eliminar_archivo", "expediente_planos", expedienteId, plano?.nombreOriginal || "");
     } catch (err) {
       setError(err.message || "No se pudo eliminar el plano.");
     } finally {
@@ -2048,7 +1936,6 @@ export default function App() {
     setData((prev) => prev.filter((row) => row.id !== item.id));
     setModalItem((prev) => (prev?.id === item.id ? null : prev));
     setNotice(`Expediente ${item.num} eliminado correctamente.`);
-    await safeAuditLog("eliminar", "expedientes", item.id, item.num || "");
   }
 
   function toggleSelectExpediente(expedienteId) {
@@ -2290,7 +2177,6 @@ export default function App() {
       setImportSummary({ totalFiles: importFiles.length, totalRows: insertedCount, ignoredDuplicates, details });
       setImportFiles([]);
       setNotice(`Importación completada. Se cargaron ${insertedCount} expedientes y se ignoraron ${ignoredDuplicates} repetidos por DNI o por titular + padrón.`);
-      await safeAuditLog("importar_excel", "expedientes", "", `${insertedCount} cargados / ${ignoredDuplicates} repetidos`);
       setActiveNav("Expedientes");
     } catch (err) {
       setError(`No se pudo importar el Excel: ${err.message}`);
@@ -2370,7 +2256,7 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} loginPassword={loginPassword} onChangePassword={setLoginPassword} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
+    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
   }
 
   return (
@@ -2409,7 +2295,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={() => { localStorage.removeItem(PANEL_SESSION_KEY); setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setLoginPassword(""); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
+              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
