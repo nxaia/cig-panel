@@ -133,11 +133,10 @@ const BARRIOS = {
 };
 
 const LOGIN_USERS = [
-  { id: "estela", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
-  { id: "carlos", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
-  { id: "usuario", nombre: "Usuario", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
+  { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
+  { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
+  { id: "emanuel-aguilar", nombre: "Emanuel Aguilar", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
-
 
 const PAGE_SIZE = 5;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
@@ -339,6 +338,7 @@ function getPreviewType(fileName = "", mimeType = "") {
   const extension = getFileExtension(fileName);
   if (["jpg", "jpeg", "png", "webp"].includes(extension) || String(mimeType || "").startsWith("image/")) return "image";
   if (extension === "pdf" || mimeType === "application/pdf") return "pdf";
+  if (["doc", "docx", "xls", "xlsx", "csv"].includes(extension)) return "office";
   return "other";
 }
 
@@ -363,7 +363,18 @@ function getAttachmentLabel(fileName = "", mimeType = "") {
 
 function isPreviewableAttachment(fileName = "", mimeType = "") {
   const ext = getFileExtension(fileName);
-  return mimeType === "application/pdf" || String(mimeType).startsWith("image/") || ["pdf", "jpg", "jpeg", "png", "webp"].includes(ext);
+  return mimeType === "application/pdf"
+    || String(mimeType).startsWith("image/")
+    || ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "xls", "xlsx", "csv"].includes(ext);
+}
+
+function getAttachmentOpenUrl(fileName = "", mimeType = "", publicUrl = "") {
+  if (!publicUrl) return "";
+  const previewType = getPreviewType(fileName, mimeType);
+  if (previewType === "office") {
+    return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(publicUrl)}`;
+  }
+  return publicUrl;
 }
 
 function getExpedienteCompleteness(expediente, attachments = []) {
@@ -878,11 +889,10 @@ function Doc({ doc }) {
   );
 }
 
-function LoginScreen({ selectedUserId, onSelectUser, password, onPasswordChange, onIngresar, loginLoading, loginError }) {
+function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError }) {
   return (
     <div
       style={{
-        width: "100vw",
         height: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
@@ -960,7 +970,7 @@ function LoginScreen({ selectedUserId, onSelectUser, password, onPasswordChange,
           <div style={{ fontSize: 21, color: C.slate, fontWeight: 800, marginTop: 4 }}>Regularización Dominial y Hábitat</div>
 
           <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>
-            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
+            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado para continuar.
           </div>
 
           <div style={{ maxWidth: 480, margin: "20px auto 0", display: "grid", gap: 12 }}>
@@ -1005,20 +1015,6 @@ function LoginScreen({ selectedUserId, onSelectUser, password, onPasswordChange,
             })}
           </div>
 
-          <div style={{ maxWidth: 480, margin: "14px auto 0", textAlign: "left" }}>
-            <div style={labelStyle}>Contraseña</div>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => onPasswordChange(e.target.value)}
-              placeholder="Ingresá la contraseña"
-              style={{ ...inputStyle, background: "#fff" }}
-            />
-            <div style={{ marginTop: 8, color: C.dim, fontSize: 12 }}>
-              Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Usuario entra solo en modo consulta.
-            </div>
-          </div>
-
           {loginError ? (
             <div
               style={{
@@ -1057,7 +1053,6 @@ function LoginScreen({ selectedUserId, onSelectUser, password, onPasswordChange,
     </div>
   );
 }
-
 
 function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [], onNext, modalIndex = 0, modalTotal = 0 }) {
   const [draft, setDraft] = useState(item || null);
@@ -1206,7 +1201,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                             <button type="button" onClick={() => setPreviewFileId(String(plano.id))} style={{ ...btnGhost, padding: "7px 10px", fontSize: 12, color: C.sky }}>Ver</button>
-                            <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
+                            <a href={getAttachmentOpenUrl(plano.nombreOriginal, plano.tipoMime, plano.publicUrl)} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
                             <a href={plano.publicUrl} download style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Descargar</a>
                             {canEdit ? (
                               <button
@@ -1228,7 +1223,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                     <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, background: "#fff", overflow: "hidden" }}>
                       <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                         <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>Vista previa: {previewTarget.nombreOriginal}</div>
-                        <a href={previewTarget.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir en pestaña</a>
+                        <a href={getAttachmentOpenUrl(previewTarget.nombreOriginal, previewTarget.tipoMime, previewTarget.publicUrl)} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir en pestaña</a>
                       </div>
                       {getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "image" ? (
                         <div style={{ padding: 12, background: "#f8fafc", display: "flex", justifyContent: "center" }}>
@@ -1236,6 +1231,8 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                         </div>
                       ) : getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "pdf" ? (
                         <iframe title={previewTarget.nombreOriginal} src={previewTarget.publicUrl} style={{ width: "100%", height: 420, border: "none", background: "#fff" }} />
+                      ) : getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "office" ? (
+                        <iframe title={previewTarget.nombreOriginal} src={getAttachmentOpenUrl(previewTarget.nombreOriginal, previewTarget.tipoMime, previewTarget.publicUrl)} style={{ width: "100%", height: 420, border: "none", background: "#fff" }} />
                       ) : (
                         <div style={{ padding: 20, fontSize: 13, color: C.muted }}>Este tipo de archivo no tiene vista previa dentro del panel. Usá “Descargar” o “Abrir en pestaña”.</div>
                       )}
@@ -1450,7 +1447,7 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
                   </button>
                 ) : null}
               </div>
-              <a href={(latestPlano?.publicUrl || draft.planoUrl)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.sky, fontWeight: 700, textDecoration: "none" }}>{isPreviewableAttachment(latestPlano?.nombreOriginal, latestPlano?.tipoMime) ? "Abrir último" : "Descargar último"}</a>
+              <a href={getAttachmentOpenUrl(latestPlano?.nombreOriginal || "", latestPlano?.tipoMime || "", (latestPlano?.publicUrl || draft.planoUrl))} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.sky, fontWeight: 700, textDecoration: "none" }}>{isPreviewableAttachment(latestPlano?.nombreOriginal, latestPlano?.tipoMime) ? "Abrir último" : "Descargar último"}</a>
               <span style={{ fontSize: 11, color: C.dim }}>{planos.length > 1 ? `${planos.length} archivos` : (latestPlano?.nombreOriginal || "1 archivo")}</span>
             </>
           ) : <span style={{ fontSize: 11, color: C.dim }}>Sin archivo</span>}
@@ -1495,7 +1492,6 @@ export default function App() {
   const [hiddenDuplicateCount, setHiddenDuplicateCount] = useState(0);
 
   const [selectedLoginUserId, setSelectedLoginUserId] = useState(LOGIN_USERS[0].id);
-  const [loginPassword, setLoginPassword] = useState("");
   const [activeUser, setActiveUser] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -1520,27 +1516,6 @@ export default function App() {
   const canEdit = Boolean(activeUser?.canEdit);
   const barrioFilterOptions = useMemo(() => buildBarrioFilterOptions(), []);
 
-
-  function getLoginAliases(user) {
-    const base = [
-      user?.id,
-      user?.nombre,
-      user?.nombre?.toLowerCase(),
-      user?.nombre?.toUpperCase(),
-    ].filter(Boolean);
-
-    if (user?.id === "estela") base.push("estela-palacios", "estela palacios");
-    if (user?.id === "carlos") base.push("carlos-chauvet", "carlos chauvet");
-    if (user?.id === "usuario") base.push("emanuel-aguilar", "emanuel aguilar", "usuario");
-
-    return [...new Set(base.map((v) => String(v).trim()).filter(Boolean))];
-  }
-
-  function getStoredPasswordValue(row) {
-    if (!row) return "";
-    return row.password_hash || row.password || row.clave || row.contrasena || "";
-  }
-
   const stats = useMemo(() => ({
     total: data.length,
     proceso: data.filter((e) => e.estado === "en_proceso").length,
@@ -1548,20 +1523,6 @@ export default function App() {
     atrasados: data.filter((e) => e.dias >= 14).length,
     completos: data.filter((e) => getExpedienteCompleteness(e, planosByExpediente[e.id] || []).level === "alto").length,
   }), [data, planosByExpediente]);
-
-
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = setTimeout(() => setNotice(""), 3500);
-    return () => clearTimeout(timer);
-  }, [notice]);
-
-  useEffect(() => {
-    if (!accessSyncStatus?.text) return;
-    const timer = setTimeout(() => setAccessSyncStatus({ kind: "", text: "" }), 3000);
-    return () => clearTimeout(timer);
-  }, [accessSyncStatus]);
 
   useEffect(() => {
     try {
@@ -1677,7 +1638,6 @@ export default function App() {
     setRefreshing(false);
   }
 
-
   async function handleLogin() {
     const selectedUser = LOGIN_USERS.find((u) => u.id === selectedLoginUserId);
     if (!selectedUser) {
@@ -1696,80 +1656,6 @@ export default function App() {
     const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
     let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
 
-    if (selectedUser.id === "usuario") {
-      const insertResult = await supabase.from("panel_accesos").insert(entry);
-      if (insertResult.error) {
-        syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
-      }
-
-      const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
-      let nextHistory = [];
-      try {
-        const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
-        const current = raw ? JSON.parse(raw) : [];
-        nextHistory = [localEntry, ...current].slice(0, 10);
-        localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
-      } catch {
-        nextHistory = [localEntry];
-      }
-
-      setAccessHistory(nextHistory);
-      const sessionUser = { ...selectedUser, lastLoginAt: entry.fecha_ingreso };
-      setActiveUser(sessionUser);
-      setAccessSyncStatus(syncStatus);
-      setLoginPassword("");
-      setLoginLoading(false);
-      return;
-    }
-
-    if (!loginPassword.trim()) {
-      setLoginError("Ingresá una contraseña para continuar.");
-      setLoginLoading(false);
-      return;
-    }
-
-    const aliases = getLoginAliases(selectedUser);
-    const { data: panelUsers, error: panelUsersError } = await supabase.from("panel_usuarios").select("*");
-    if (panelUsersError) {
-      setLoginError(`No se pudo consultar panel_usuarios: ${panelUsersError.message}`);
-      setLoginLoading(false);
-      return;
-    }
-
-    const panelUser = (panelUsers || []).find((row) => {
-      const clave = String(row.usuario_clave || "").trim().toLowerCase();
-      const nombre = String(row.nombre || "").trim().toLowerCase();
-      return aliases.some((alias) => {
-        const normalized = String(alias).trim().toLowerCase();
-        return normalized === clave || normalized === nombre;
-      });
-    });
-
-    if (!panelUser) {
-      setLoginError("El usuario no existe en la tabla panel_usuarios.");
-      setLoginLoading(false);
-      return;
-    }
-
-    const savedPassword = getStoredPasswordValue(panelUser);
-
-    if (!savedPassword) {
-      const passwordPayload = { password_hash: loginPassword.trim() };
-      if (Object.prototype.hasOwnProperty.call(panelUser, "password_set_at")) passwordPayload.password_set_at = new Date().toISOString();
-      if (Object.prototype.hasOwnProperty.call(panelUser, "updated_at")) passwordPayload.updated_at = new Date().toISOString();
-
-      const { error: passwordSaveError } = await supabase.from("panel_usuarios").update(passwordPayload).eq("id", panelUser.id);
-      if (passwordSaveError) {
-        setLoginError(`No se pudo registrar la contraseña: ${passwordSaveError.message}`);
-        setLoginLoading(false);
-        return;
-      }
-    } else if (savedPassword !== loginPassword.trim()) {
-      setLoginError("Contraseña incorrecta.");
-      setLoginLoading(false);
-      return;
-    }
-
     const insertResult = await supabase.from("panel_accesos").insert(entry);
     if (insertResult.error) {
       syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
@@ -1787,10 +1673,8 @@ export default function App() {
     }
 
     setAccessHistory(nextHistory);
-    const sessionUser = { ...selectedUser, lastLoginAt: entry.fecha_ingreso };
-    setActiveUser(sessionUser);
+    setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
     setAccessSyncStatus(syncStatus);
-    setLoginPassword("");
     setLoginLoading(false);
   }
 
@@ -2386,7 +2270,7 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} password={loginPassword} onPasswordChange={setLoginPassword} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
+    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
   }
 
   return (
@@ -2425,7 +2309,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setLoginPassword(""); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
+              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
