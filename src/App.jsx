@@ -902,12 +902,11 @@ function LoginScreen({ selectedUserId, onSelectUser, loginPassword, onChangePass
         minHeight: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
-        alignItems: "flex-start",
+        alignItems: "center",
         justifyContent: "center",
         padding: 16,
         boxSizing: "border-box",
-        overflowX: "hidden",
-        overflowY: "auto",
+        overflow: "hidden",
       }}
     >
       <div
@@ -919,9 +918,7 @@ function LoginScreen({ selectedUserId, onSelectUser, loginPassword, onChangePass
           overflowX: "hidden",
           boxShadow: "0 24px 80px rgba(15,23,42,.12)",
           border: `1px solid ${C.border}`,
-          maxHeight: "calc(100vh - 32px)",
-          overflowY: "auto",
-          margin: "auto 0",
+          margin: "0 auto",
         }}
       >
         <div style={{ height: 8, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
@@ -1563,6 +1560,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    if (!activeUser) {
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+    } else {
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [activeUser]);
+
+  useEffect(() => {
     if (activeUser) loadInitialData();
   }, [activeUser]);
 
@@ -1683,35 +1696,6 @@ export default function App() {
     }
   }
 
-  async function ensurePanelUserRow(profile) {
-    const existing = await supabase
-      .from("panel_usuarios")
-      .select("*")
-      .eq("usuario_clave", profile.id)
-      .maybeSingle();
-
-    if (existing.data) return { data: existing.data, error: null };
-
-    const payload = {
-      auth_user_id: null,
-      nombre: profile.nombre,
-      email: profile.email,
-      rol: profile.rol,
-      area: profile.area,
-      can_edit: profile.canEdit,
-      activo: true,
-      tecnico: profile.tecnico,
-      usuario_clave: profile.id,
-      password_hash: null,
-      password_set_at: null,
-      updated_at: new Date().toISOString(),
-    };
-
-    const inserted = await supabase.from("panel_usuarios").insert(payload).select("*").single();
-    return inserted;
-  }
-
-
   async function handleLogin() {
     const selectedUser = LOGIN_USERS.find((u) => u.id === selectedLoginUserId);
     if (!selectedUser) {
@@ -1732,80 +1716,51 @@ export default function App() {
     setAccessSyncStatus({ kind: "", text: "" });
 
     try {
-      const userResult = await ensurePanelUserRow(selectedUser);
-      if (userResult.error || !userResult.data) {
-        throw new Error(userResult.error?.message || "No se pudo preparar el usuario del panel.");
-      }
-
-      const panelUser = userResult.data;
       const passwordHash = await hashPassword(loginPassword);
+      const { data: rpcData, error: rpcError } = await supabase.rpc("panel_login_password", {
+        p_usuario_clave: selectedUser.id,
+        p_password_hash: passwordHash,
+      });
 
-      if (!panelUser.password_hash) {
-        const { data: updatedUser, error: passwordSetError } = await supabase
-          .from("panel_usuarios")
-          .update({
-            password_hash: passwordHash,
-            password_set_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", panelUser.id)
-          .select("*")
-          .single();
-
-        if (passwordSetError) {
-          throw new Error(`No se pudo guardar la contraseña inicial: ${passwordSetError.message}`);
-        }
-
-        const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
-        try {
-          await supabase.from("panel_accesos").insert(entry);
-        } catch {
-        }
-
-        const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
-        const current = safeJsonParse(localStorage.getItem(ACCESS_HISTORY_KEY), []) || [];
-        const nextHistory = [localEntry, ...current].slice(0, 10);
-        localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
-        setAccessHistory(nextHistory);
-
-        const nextUser = {
-          ...selectedUser,
-          canEdit: updatedUser.can_edit ?? selectedUser.canEdit,
-          lastLoginAt: entry.fecha_ingreso,
-        };
-        setActiveUser(nextUser);
-        localStorage.setItem(PANEL_SESSION_KEY, JSON.stringify({ userId: selectedUser.id, lastLoginAt: entry.fecha_ingreso }));
-        setAccessSyncStatus({ kind: "success", text: "Contraseña creada y acceso registrado correctamente." });
-        setLoginPassword("");
-        setLoginLoading(false);
-        return;
+      if (rpcError) {
+        throw new Error(`No se pudo validar el acceso: ${rpcError.message}`);
       }
 
-      if (panelUser.password_hash !== passwordHash) {
-        setLoginError("La contraseña no es correcta.");
-        setLoginLoading(false);
-        return;
+      const resultRow = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      if (!resultRow) {
+        throw new Error("No se encontró respuesta del sistema de acceso.");
+      }
+      if (!resultRow.ok) {
+        throw new Error(resultRow.message || "No se pudo iniciar sesión.");
       }
 
-      const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
-      let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
+      const entry = { nombre: resultRow.nombre || selectedUser.nombre, rol: resultRow.rol || selectedUser.rol, fecha_ingreso: new Date().toISOString() };
+      let syncStatus = { kind: "success", text: resultRow.password_initialized ? "Contraseña creada y acceso registrado correctamente." : "Ingreso registrado correctamente en el sistema central." };
 
       try {
         const insertResult = await supabase.from("panel_accesos").insert(entry);
         if (insertResult.error) {
-          syncStatus = { kind: "warning", text: "Ingreso validado. Pendiente registro central." };
+          syncStatus = { kind: "warning", text: resultRow.password_initialized ? "Contraseña creada. Pendiente registro central de acceso." : "Ingreso validado. Pendiente registro central." };
         }
       } catch {
-        syncStatus = { kind: "warning", text: "Ingreso validado. Pendiente registro central." };
+        syncStatus = { kind: "warning", text: resultRow.password_initialized ? "Contraseña creada. Pendiente registro central de acceso." : "Ingreso validado. Pendiente registro central." };
       }
 
-      const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
+      const localEntry = { ...entry, tecnico: Boolean(resultRow.tecnico ?? selectedUser.tecnico), area: resultRow.area || selectedUser.area };
       const current = safeJsonParse(localStorage.getItem(ACCESS_HISTORY_KEY), []) || [];
       const nextHistory = [localEntry, ...current].slice(0, 10);
       localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
       setAccessHistory(nextHistory);
 
-      const nextUser = { ...selectedUser, canEdit: panelUser.can_edit ?? selectedUser.canEdit, lastLoginAt: entry.fecha_ingreso };
+      const nextUser = {
+        ...selectedUser,
+        nombre: resultRow.nombre || selectedUser.nombre,
+        rol: resultRow.rol || selectedUser.rol,
+        area: resultRow.area || selectedUser.area,
+        tecnico: Boolean(resultRow.tecnico ?? selectedUser.tecnico),
+        canEdit: Boolean(resultRow.can_edit ?? selectedUser.canEdit),
+        lastLoginAt: entry.fecha_ingreso,
+      };
       setActiveUser(nextUser);
       localStorage.setItem(PANEL_SESSION_KEY, JSON.stringify({ userId: selectedUser.id, lastLoginAt: entry.fecha_ingreso }));
       setAccessSyncStatus(syncStatus);
@@ -1816,7 +1771,6 @@ export default function App() {
       setLoginLoading(false);
     }
   }
-
 
   async function addExpediente(form) {
     if (!supabase || !canEdit) return;
