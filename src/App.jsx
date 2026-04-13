@@ -138,7 +138,8 @@ const LOGIN_USERS = [
   { id: "emanuel-aguilar", nombre: "Usuario", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
 
-const PAGE_SIZE = 5;
+const MIN_PAGE_SIZE = 5;
+const MAX_PAGE_SIZE = 14;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
 
 
@@ -1669,6 +1670,7 @@ export default function App() {
   const [savingField, setSavingField] = useState("");
   const [uploadingPlanoId, setUploadingPlanoId] = useState("");
   const [deletingPlanoId, setDeletingPlanoId] = useState("");
+  const [viewportHeight, setViewportHeight] = useState(typeof window !== "undefined" ? window.innerHeight : 900);
   const saveTimersRef = useRef({});
 
   const [importFiles, setImportFiles] = useState([]);
@@ -1707,6 +1709,13 @@ export default function App() {
 
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => clearTimeout(timer));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => setViewportHeight(window.innerHeight || 900);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   async function applyExpedientePlanoUpdate(expedienteId, filePath, publicUrl) {
@@ -2505,9 +2514,15 @@ export default function App() {
     return d;
   }, [data, search, fEstado, fArea, fPrioridad, fBarrio, fCompletitud, usersMap, sortOrder, planosByExpediente]);
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
+  const pageSize = useMemo(() => {
+    const estimatedAvailable = viewportHeight - 320;
+    const estimatedRows = Math.floor(estimatedAvailable / 78);
+    return Math.max(MIN_PAGE_SIZE, Math.min(MAX_PAGE_SIZE, estimatedRows || MIN_PAGE_SIZE));
+  }, [viewportHeight]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
   const currentPage = Math.min(page, totalPages);
-  const slice = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const slice = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const modalSequence = filtered;
   const modalIndex = modalItem ? modalSequence.findIndex((item) => item.id === modalItem.id) : -1;
   const modalTotal = modalSequence.length;
@@ -2586,7 +2601,7 @@ export default function App() {
             </div>
           </header>
 
-          <main style={{ flex: 1, padding: "16px 16px 20px", width: "100%", maxWidth: "none", boxSizing: "border-box", overflowX: "hidden" }}>
+          <main style={{ flex: 1, padding: "14px 14px 10px", width: "100%", maxWidth: "none", boxSizing: "border-box", overflowX: "hidden" }}>
             {error ? <div style={{ marginBottom: 16, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{error}</div> : null}
             {!canEdit ? <div style={{ marginBottom: 16, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>Usuario en modo solo lectura. Este perfil no puede crear, editar, importar ni eliminar expedientes.</div> : null}
 
@@ -2712,7 +2727,7 @@ export default function App() {
                     ) : null}
                   </div>
 
-                  <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 265px)", width: "100%" }}>
+                  <div style={{ overflowX: "auto", overflowY: "visible", width: "100%" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1480, fontSize: 11, tableLayout: "fixed" }}>
                       <colgroup>
                         {TABLE_COLGROUP.map((col) => <col key={col.key} style={{ width: col.width }} />)}
@@ -2729,7 +2744,7 @@ export default function App() {
                   </div>
 
                   <div style={{ padding: "12px 18px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 12, color: C.muted }}>Mostrando {filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} a {Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length} registros únicos • Seleccionados: {selectedExpedientes.length} • Filas totales en base: {rawRowCount} • Duplicados ocultos: {hiddenDuplicateCount} • Página {currentPage} de {totalPages}</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>Mostrando {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} a {Math.min(currentPage * pageSize, filtered.length)} de {filtered.length} registros únicos • Seleccionados: {selectedExpedientes.length} • Filas totales en base: {rawRowCount} • Duplicados ocultos: {hiddenDuplicateCount} • Página {currentPage} de {totalPages}</div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <button onClick={() => setPage(1)} style={btnGhost} disabled={currentPage === 1}>Primera</button>
                       <button onClick={() => setPage((p) => Math.max(1, p - 1))} style={btnGhost} disabled={currentPage === 1}>Anterior</button>
