@@ -499,6 +499,83 @@ function chunkArray(items, size) {
   return chunks;
 }
 
+async function sha256Hex(value) {
+  const normalized = String(value || "");
+  if (!normalized) return "";
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi?.subtle) throw new Error("El navegador no soporta criptografía segura.");
+  const encoded = new TextEncoder().encode(normalized);
+  const digest = await cryptoApi.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function getStoredPanelSession() {
+  try {
+    const raw = localStorage.getItem(PANEL_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredPanelSession(session) {
+  try {
+    localStorage.setItem(PANEL_SESSION_KEY, JSON.stringify(session));
+  } catch {}
+}
+
+function clearStoredPanelSession() {
+  try {
+    localStorage.removeItem(PANEL_SESSION_KEY);
+  } catch {}
+}
+
+function mergeLoginProfiles(rows = []) {
+  const byKey = new Map((rows || []).map((row) => [row.user_key, row]));
+  return LOGIN_USERS.map((baseUser) => {
+    const dbRow = byKey.get(baseUser.userKey);
+    return {
+      ...baseUser,
+      nombre: dbRow?.nombre || baseUser.nombre,
+      rol: dbRow?.rol || baseUser.rol,
+      area: dbRow?.area || baseUser.area,
+      tecnico: typeof dbRow?.tecnico === "boolean" ? dbRow.tecnico : baseUser.tecnico,
+      canEdit: typeof dbRow?.can_edit === "boolean" ? dbRow.can_edit : baseUser.canEdit,
+      activo: typeof dbRow?.activo === "boolean" ? dbRow.activo : true,
+      passwordHash: dbRow?.password_hash || "",
+      passwordConfigured: Boolean(dbRow?.password_hash),
+      passwordSetAt: dbRow?.password_set_at || null,
+      lastLoginAt: dbRow?.last_login_at || null,
+    };
+  });
+}
+
+async function fetchPanelProfiles() {
+  if (!supabase) return { data: mergeLoginProfiles([]), error: null };
+  const { data, error } = await supabase
+    .from(PANEL_AUTH_TABLE)
+    .select("user_key, nombre, rol, area, tecnico, can_edit, activo, password_hash, password_set_at, last_login_at")
+    .in("user_key", LOGIN_USERS.map((user) => user.userKey));
+
+  if (error) return { data: mergeLoginProfiles([]), error };
+  return { data: mergeLoginProfiles(data || []), error: null };
+}
+
+async function writeAuditLog(activeUser, action, recordId = null, detail = "", module = "panel") {
+  if (!supabase || !activeUser) return;
+  try {
+    await supabase.from(PANEL_AUDIT_TABLE).insert({
+      usuario_clave: activeUser.userKey || activeUser.id,
+      usuario_nombre: activeUser.nombre || "",
+      accion: action,
+      modulo: module,
+      registro_id: recordId ? String(recordId) : null,
+      detalle: detail || "",
+      created_at: new Date().toISOString(),
+    });
+  } catch {}
+}
+
 
 async function fetchAllExpedientes() {
   if (!supabase) return { data: [], error: null };
@@ -651,17 +728,31 @@ function Doc({ doc }) {
   );
 }
 
-function LoginScreen({ selectedUserId, onSelectUser, onIngresar, password, onPasswordChange, loginLoading, loginError }) {
+function LoginScreen({
+  selectedUserId,
+  onSelectUser,
+  onIngresar,
+  loginLoading,
+  loginError,
+  password,
+  onPasswordChange,
+  passwordConfirm,
+  onPasswordConfirmChange,
+  selectedProfile,
+}) {
+  const firstAccess = selectedProfile ? !selectedProfile.passwordConfigured : false;
   return (
     <div
       style={{
         minHeight: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "center",
-        padding: 24,
+        padding: 16,
         boxSizing: "border-box",
+        overflowX: "hidden",
+        overflowY: "auto",
       }}
     >
       <div
@@ -670,39 +761,31 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, password, onPas
           maxWidth: 760,
           background: "#fff",
           borderRadius: 28,
-          overflow: "hidden",
+          overflowX: "hidden",
           boxShadow: "0 24px 80px rgba(15,23,42,.12)",
           border: `1px solid ${C.border}`,
+          maxHeight: "calc(100vh - 32px)",
+          overflowY: "auto",
+          margin: "auto 0",
         }}
       >
         <div style={{ height: 8, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
-        <div style={{ padding: "34px 30px 28px", textAlign: "center" }}>
-          <div
-            style={{
-              width: 132,
-              height: 132,
-              margin: "0 auto 28px",
-              borderRadius: 28,
-              background: "#fff",
-              border: `1px solid ${C.border}`,
-              boxShadow: "0 16px 40px rgba(15,23,42,.08)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img src="/logo-icono.png" alt="Municipio" style={{ width: 102, height: 102, objectFit: "contain" }} />
+        <div style={{ padding: "24px 28px 22px", textAlign: "center" }}>
+          <div style={{ width: 108, height: 108, margin: "0 auto 20px", borderRadius: 24, background: "#fff", border: `1px solid ${C.border}`, boxShadow: "0 12px 30px rgba(15,23,42,.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <img src="/logo-icono.png" alt="Municipio" style={{ width: 84, height: 84, objectFit: "contain" }} />
           </div>
-
-          <div style={{ fontSize: 14, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>MUNICIPALIDAD DE</div>
-          <div style={{ fontSize: 26, color: C.slate, fontWeight: 800, marginTop: 6 }}>Banda del Río Salí</div>
-          <div style={{ width: 92, height: 4, borderRadius: 999, background: "#14b8a6", margin: "20px auto 18px" }} />
-          <div style={{ fontSize: 18, color: C.slate, fontWeight: 700 }}>Dirección de Regularización Dominial</div>
-          <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 14, lineHeight: 1.55 }}>
+          <div style={{ fontSize: 13, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>MUNICIPALIDAD DE</div>
+          <div style={{ fontSize: 24, color: C.slate, fontWeight: 800, marginTop: 6 }}>Banda del Río Salí</div>
+          <div style={{ width: 92, height: 4, borderRadius: 999, background: "#14b8a6", margin: "16px auto 14px" }} />
+          <div style={{ width: 108, height: 108, margin: "0 auto", borderRadius: 24, background: "#fff", border: `1px solid ${C.border}`, boxShadow: "0 12px 30px rgba(15,23,42,.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <img src={logoArea} alt="Logo del área" style={{ width: 96, height: 96, objectFit: "contain", display: "block", background: "#fff", borderRadius: 20 }} />
+          </div>
+          <div style={{ marginTop: 12, fontSize: 12, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>DIRECCIÓN DE</div>
+          <div style={{ fontSize: 21, color: C.slate, fontWeight: 800, marginTop: 4 }}>Regularización Dominial</div>
+          <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>
             Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
           </div>
-
-          <div style={{ maxWidth: 480, margin: "28px auto 0", display: "grid", gap: 12 }}>
+          <div style={{ maxWidth: 480, margin: "20px auto 0", display: "grid", gap: 12 }}>
             {LOGIN_USERS.map((user) => {
               const active = selectedUserId === user.id;
               return (
@@ -711,7 +794,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, password, onPas
                   onClick={() => onSelectUser(user.id)}
                   style={{
                     textAlign: "left",
-                    padding: "16px 18px",
+                    padding: "14px 18px",
                     borderRadius: 16,
                     border: `1px solid ${active ? "#7dd3fc" : C.border}`,
                     background: active ? "#f0f9ff" : "#fff",
@@ -724,71 +807,28 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, password, onPas
                 >
                   <div>
                     <div style={{ fontSize: 16, color: C.slate, fontWeight: 700 }}>{user.nombre}</div>
-                    <div style={{ marginTop: 4, fontSize: 13, color: C.muted }}>
-                      {user.rol} • {user.area}
-                    </div>
+                    <div style={{ marginTop: 4, fontSize: 13, color: C.muted }}>{user.rol} • {user.area}</div>
                   </div>
-                  <div
-                    style={{
-                      minWidth: 24,
-                      width: 24,
-                      height: 24,
-                      borderRadius: "50%",
-                      border: `2px solid ${active ? C.sky : "#cbd5e1"}`,
-                      background: active ? C.sky : "#fff",
-                      boxShadow: active ? "inset 0 0 0 4px #fff" : "none",
-                    }}
-                  />
+                  <div style={{ minWidth: 24, width: 24, height: 24, borderRadius: "50%", border: `2px solid ${active ? C.sky : "#cbd5e1"}`, background: active ? C.sky : "#fff", boxShadow: active ? "inset 0 0 0 4px #fff" : "none" }} />
                 </button>
               );
             })}
           </div>
-
           <div style={{ maxWidth: 480, margin: "18px auto 0", textAlign: "left" }}>
-            <div style={labelStyle}>Contraseña</div>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => onPasswordChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onIngresar();
-              }}
-              placeholder="Ingresá la contraseña"
-              style={{ ...inputStyle, background: "#fff" }}
-            />
+            <div style={labelStyle}>{firstAccess ? "Crear contraseña" : "Contraseña"}</div>
+            <input type="password" value={password} onChange={(e) => onPasswordChange(e.target.value)} placeholder={firstAccess ? "Creá una contraseña" : "Ingresá la contraseña"} style={inputStyle} />
           </div>
-
-          {loginError ? (
-            <div
-              style={{
-                maxWidth: 480,
-                margin: "18px auto 0",
-                background: "#fef2f2",
-                color: "#991b1b",
-                border: "1px solid #fecaca",
-                borderRadius: 12,
-                padding: "12px 14px",
-                fontSize: 13,
-              }}
-            >
-              {loginError}
+          {firstAccess ? (
+            <div style={{ maxWidth: 480, margin: "12px auto 0", textAlign: "left" }}>
+              <div style={labelStyle}>Confirmar contraseña</div>
+              <input type="password" value={passwordConfirm} onChange={(e) => onPasswordConfirmChange(e.target.value)} placeholder="Repetí la contraseña" style={inputStyle} />
+              <div style={{ marginTop: 8, fontSize: 12, color: C.dim }}>Primer ingreso: esta contraseña va a quedar guardada para futuros accesos.</div>
             </div>
           ) : null}
-
-          <div style={{ marginTop: 24 }}>
-            <button
-              onClick={onIngresar}
-              disabled={loginLoading || !selectedUserId || !password.trim()}
-              style={{
-                ...btnPrimary,
-                padding: "13px 28px",
-                fontSize: 15,
-                borderRadius: 12,
-                opacity: loginLoading || !selectedUserId || !password.trim() ? 0.7 : 1,
-                cursor: loginLoading || !selectedUserId || !password.trim() ? "not-allowed" : "pointer",
-              }}
-            >
-              {loginLoading ? "Ingresando..." : "Ingresar al panel"}
+          {loginError ? <div style={{ maxWidth: 480, margin: "14px auto 0", background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{loginError}</div> : null}
+          <div style={{ marginTop: 18 }}>
+            <button onClick={onIngresar} disabled={loginLoading || !selectedUserId || !password} style={{ ...btnPrimary, padding: "13px 28px", fontSize: 15, borderRadius: 12, opacity: loginLoading || !selectedUserId || !password ? 0.7 : 1, cursor: loginLoading || !selectedUserId || !password ? "not-allowed" : "pointer" }}>
+              {loginLoading ? "Ingresando..." : firstAccess ? "Guardar clave e ingresar" : "Ingresar al panel"}
             </button>
           </div>
         </div>
@@ -850,29 +890,9 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
       >
         <div style={{ background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", padding: "22px 24px", color: "#fff" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ minWidth: 280 }}>
+            <div>
               <div style={{ fontSize: 10, color: "#bae6fd", fontWeight: 600, textTransform: "uppercase" }}>Expediente</div>
-              {canEdit ? (
-                <input
-                  value={draft.num}
-                  onChange={(e) => updateField("num", e.target.value)}
-                  style={{
-                    marginTop: 6,
-                    width: "100%",
-                    maxWidth: 320,
-                    background: "rgba(255,255,255,.16)",
-                    border: "1px solid rgba(255,255,255,.35)",
-                    color: "#fff",
-                    borderRadius: 10,
-                    padding: "10px 12px",
-                    fontSize: 18,
-                    fontWeight: 700,
-                    outline: "none",
-                  }}
-                />
-              ) : (
-                <div style={{ fontSize: 20, fontWeight: 700, marginTop: 3 }}>{draft.num}</div>
-              )}
+              <div style={{ fontSize: 20, fontWeight: 700, marginTop: 3 }}>{draft.num}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               {saving ? <span style={{ fontSize: 12, color: "#e0f2fe" }}>Guardando…</span> : null}
@@ -902,7 +922,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
               {canEdit ? (
                 <label style={{ ...btnGhost, display: "inline-flex", alignItems: "center", gap: 8, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
-                  {uploadingPlano ? "Subiendo..." : "Subir plano (PDF o imagen)"}
+                  {uploadingPlano ? "Subiendo..." : "Subir imagen del plano"}
                   <input
                     type="file"
                     accept="image/*,.pdf"
@@ -1132,10 +1152,12 @@ export default function App() {
   const [hiddenDuplicateCount, setHiddenDuplicateCount] = useState(0);
 
   const [selectedLoginUserId, setSelectedLoginUserId] = useState(LOGIN_USERS[0].id);
-  const [loginPassword, setLoginPassword] = useState("");
   const [activeUser, setActiveUser] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginPasswordConfirm, setLoginPasswordConfirm] = useState("");
+  const [loginProfiles, setLoginProfiles] = useState(mergeLoginProfiles([]));
   const [accessSyncStatus, setAccessSyncStatus] = useState({ kind: "", text: "" });
   const [accessHistory, setAccessHistory] = useState([]);
 
@@ -1166,6 +1188,19 @@ export default function App() {
     } catch {
       setAccessHistory([]);
     }
+
+    (async () => {
+      const profilesResult = await fetchPanelProfiles();
+      setLoginProfiles(profilesResult.data || mergeLoginProfiles([]));
+      const storedSession = getStoredPanelSession();
+      if (!storedSession?.userKey) return;
+      const restored = (profilesResult.data || []).find((user) => user.userKey === storedSession.userKey && user.activo !== false && user.passwordConfigured);
+      if (restored) {
+        setActiveUser({ ...restored, lastLoginAt: restored.lastLoginAt || storedSession.loginAt || null });
+      } else {
+        clearStoredPanelSession();
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -1223,8 +1258,20 @@ export default function App() {
     setRefreshing(false);
   }
 
+  function handleLogout() {
+    clearStoredPanelSession();
+    setActiveUser(null);
+    setSelectedLoginUserId(LOGIN_USERS[0].id);
+    setLoginPassword("");
+    setLoginPasswordConfirm("");
+    setActiveNav("Dashboard");
+    setLoginError("");
+    setNotice("");
+    setAccessSyncStatus({ kind: "", text: "" });
+  }
+
   async function handleLogin() {
-    const selectedUser = LOGIN_USERS.find((u) => u.id === selectedLoginUserId);
+    const selectedUser = loginProfiles.find((user) => user.id === selectedLoginUserId) || LOGIN_USERS.find((user) => user.id === selectedLoginUserId);
     if (!selectedUser) {
       setLoginError("Seleccioná un usuario habilitado para ingresar.");
       return;
@@ -1233,12 +1280,8 @@ export default function App() {
       setLoginError("Faltan las variables de entorno de Supabase.");
       return;
     }
-    if (!loginPassword.trim()) {
-      setLoginError("Ingresá la contraseña para continuar.");
-      return;
-    }
-    if ((LOGIN_PASSWORDS[selectedUser.id] || "") !== loginPassword) {
-      setLoginError("Contraseña incorrecta.");
+    if (!loginPassword) {
+      setLoginError("Ingresá una contraseña.");
       return;
     }
 
@@ -1246,31 +1289,68 @@ export default function App() {
     setLoginError("");
     setAccessSyncStatus({ kind: "", text: "" });
 
-    const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
-    let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
-
-    const insertResult = await supabase.from("panel_accesos").insert(entry);
-    if (insertResult.error) {
-      syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
-    }
-
-    const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
-    let nextHistory = [];
     try {
-      const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
-      const current = raw ? JSON.parse(raw) : [];
-      nextHistory = [localEntry, ...current].slice(0, 10);
-      localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
-    } catch {
-      nextHistory = [localEntry];
-    }
+      let profile = selectedUser;
+      const incomingHash = await sha256Hex(loginPassword);
 
-    setAccessHistory(nextHistory);
-    setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
-    setAccessSyncStatus(syncStatus);
-    setLoginPassword("");
-    setLoginLoading(false);
-    await logAudit("login", "panel", null, { usuario: selectedUser.id }, selectedUser);
+      if (!selectedUser.passwordConfigured) {
+        if (loginPassword.length < 6) throw new Error("La contraseña debe tener al menos 6 caracteres.");
+        if (loginPassword !== loginPasswordConfirm) throw new Error("Las contraseñas no coinciden.");
+
+        const upsertPayload = {
+          user_key: selectedUser.userKey,
+          nombre: selectedUser.nombre,
+          rol: selectedUser.rol,
+          area: selectedUser.area,
+          tecnico: selectedUser.tecnico,
+          can_edit: selectedUser.canEdit,
+          activo: true,
+          password_hash: incomingHash,
+          password_set_at: new Date().toISOString(),
+          last_login_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error: upsertError } = await supabase.from(PANEL_AUTH_TABLE).upsert(upsertPayload, { onConflict: "user_key" });
+        if (upsertError) throw new Error(`No se pudo guardar la contraseña: ${upsertError.message}`);
+
+        const refreshed = await fetchPanelProfiles();
+        setLoginProfiles(refreshed.data || mergeLoginProfiles([]));
+        profile = (refreshed.data || []).find((user) => user.userKey === selectedUser.userKey) || { ...selectedUser, passwordConfigured: true };
+      } else {
+        if (incomingHash !== selectedUser.passwordHash) throw new Error("La contraseña ingresada no es correcta.");
+        await supabase.from(PANEL_AUTH_TABLE).update({ last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("user_key", selectedUser.userKey);
+      }
+
+      const entry = { nombre: profile.nombre, rol: profile.rol, fecha_ingreso: new Date().toISOString() };
+      let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
+      const insertResult = await supabase.from("panel_accesos").insert(entry);
+      if (insertResult.error) syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
+
+      const localEntry = { ...entry, tecnico: profile.tecnico, area: profile.area };
+      let nextHistory = [];
+      try {
+        const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
+        const current = raw ? JSON.parse(raw) : [];
+        nextHistory = [localEntry, ...current].slice(0, 10);
+        localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
+      } catch {
+        nextHistory = [localEntry];
+      }
+
+      const activeProfile = { ...profile, lastLoginAt: entry.fecha_ingreso };
+      setAccessHistory(nextHistory);
+      setActiveUser(activeProfile);
+      setAccessSyncStatus(syncStatus);
+      saveStoredPanelSession({ userKey: profile.userKey, loginAt: entry.fecha_ingreso });
+      setLoginPassword("");
+      setLoginPasswordConfirm("");
+      await writeAuditLog(activeProfile, "login", profile.userKey, "Ingreso al panel", "auth");
+    } catch (err) {
+      setLoginError(err.message || "No se pudo iniciar sesión.");
+    } finally {
+      setLoginLoading(false);
+    }
   }
 
   async function addExpediente(form) {
@@ -1313,7 +1393,7 @@ export default function App() {
     setNuevoOpen(false);
     setActiveNav("Expedientes");
     setNotice("Expediente creado correctamente.");
-    await logAudit("crear_expediente", "expedientes", inserted.id, { numero_expediente: inserted.numero_expediente });
+    await writeAuditLog(activeUser, "crear_expediente", inserted.id, `Se creó ${inserted.numero_expediente || inserted.id}`, "expedientes");
     setSaving(false);
   }
 
@@ -1337,6 +1417,7 @@ export default function App() {
     const normalized = normalizeExpediente(updated);
     setData((prev) => prev.map((item) => (item.id === expedienteId ? normalized : item)));
     setModalItem((prev) => (prev && prev.id === expedienteId ? normalized : prev));
+    await writeAuditLog(activeUser, "editar_expediente", expedienteId, Object.keys(partial || {}).join(", "), "expedientes");
     setSavingField("");
   }
 
@@ -1356,54 +1437,24 @@ export default function App() {
   async function uploadPlanoFile(expedienteId, file) {
     if (!supabase || !file || !canEdit) return;
 
-    const extension = getFileExtension(file.name) || "bin";
-    const isAllowed = ["pdf", "jpg", "jpeg", "png", "webp"].includes(extension) || ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg"].includes(file.type);
-    if (!isAllowed) {
-      setError("Formato no permitido. Subí PDF, JPG, JPEG, PNG o WEBP.");
-      return;
-    }
-    if (file.size > MAX_PLANO_FILE_SIZE_MB * 1024 * 1024) {
-      setError(`El archivo supera el límite de ${MAX_PLANO_FILE_SIZE_MB} MB.`);
-      return;
-    }
-
     setUploadingPlanoId(String(expedienteId));
     setError("");
-    setNotice("");
+    const extension = file.name.split(".").pop() || "bin";
+    const safeName = `${Date.now()}-${String(file.name).replace(/[^a-zA-Z0-9_.-]/g, "-")}`;
+    const filePath = `${expedienteId}/${safeName}`;
 
-    try {
-      const safeName = `${Date.now()}-${String(file.name).replace(/[^a-zA-Z0-9_.-]/g, "-")}`;
-      const filePath = `${expedienteId}/${safeName}`;
-
-      const { error: uploadError } = await supabase.storage.from(PLANOS_BUCKET).upload(filePath, file, {
-        upsert: true,
-        contentType: file.type || undefined,
-      });
-      if (uploadError) throw uploadError;
-
-      const { data: publicData } = supabase.storage.from(PLANOS_BUCKET).getPublicUrl(filePath);
-      const publicUrl = publicData?.publicUrl || "";
-
-      const { error: dbError } = await supabase
-        .from("expedientes")
-        .update({
-          plano_url: publicUrl,
-          plano_path: filePath,
-          ultima_actualizacion: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", expedienteId);
-      if (dbError) throw dbError;
-
-      setData((prev) => prev.map((item) => item.id === expedienteId ? { ...item, planoUrl: publicUrl, planoPath: filePath, upd: new Date().toISOString() } : item));
-      setModalItem((prev) => prev && prev.id === expedienteId ? { ...prev, planoUrl: publicUrl, planoPath: filePath, upd: new Date().toISOString() } : prev);
-      setNotice("Plano subido correctamente.");
-      await logAudit("subir_plano", "expedientes", expedienteId, { nombre: file.name, tipo: file.type || extension, path: filePath });
-    } catch (err) {
-      setError(`No se pudo subir el plano: ${err.message || "error desconocido"}`);
-    } finally {
+    const { error: uploadError } = await supabase.storage.from(PLANOS_BUCKET).upload(filePath, file, { upsert: true });
+    if (uploadError) {
+      setError(`No se pudo subir el plano: ${uploadError.message}`);
       setUploadingPlanoId("");
+      return;
     }
+
+    const { data: publicData } = supabase.storage.from(PLANOS_BUCKET).getPublicUrl(filePath);
+    const publicUrl = publicData?.publicUrl || "";
+    await persistFieldUpdate(expedienteId, { planoUrl: publicUrl });
+    setUploadingPlanoId("");
+    setNotice("Plano subido correctamente.");
   }
   async function deleteExpediente(item) {
     if (!supabase || !canEdit || !item?.id) return;
@@ -1421,7 +1472,7 @@ export default function App() {
     setData((prev) => prev.filter((row) => row.id !== item.id));
     setModalItem((prev) => (prev?.id === item.id ? null : prev));
     setNotice(`Expediente ${item.num} eliminado correctamente.`);
-    await logAudit("eliminar_expediente", "expedientes", item.id, { numero_expediente: item.num });
+    await writeAuditLog(activeUser, "eliminar_expediente", item.id, item.num, "expedientes");
   }
 
 
@@ -1545,7 +1596,6 @@ export default function App() {
       setImportFiles([]);
       setNotice(`Importación completada. Se cargaron ${insertedCount} expedientes y se ignoraron ${ignoredDuplicates} repetidos por DNI o por titular + padrón.`);
       setActiveNav("Expedientes");
-      await logAudit("importar_excel", "expedientes", null, { cargados: insertedCount, ignorados: ignoredDuplicates, archivos: importFiles.map((f) => f.name) });
     } catch (err) {
       setError(`No se pudo importar el Excel: ${err.message}`);
     }
@@ -1605,7 +1655,7 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} password={loginPassword} onPasswordChange={setLoginPassword} loginLoading={loginLoading} loginError={loginError} />;
+    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={(id) => { setSelectedLoginUserId(id); setLoginPassword(""); setLoginPasswordConfirm(""); setLoginError(""); }} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} password={loginPassword} onPasswordChange={setLoginPassword} passwordConfirm={loginPasswordConfirm} onPasswordConfirmChange={setLoginPasswordConfirm} selectedProfile={selectedLoginProfile} />;
   }
 
   return (
@@ -1644,7 +1694,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={async () => { await logAudit("logout", "panel", null, { usuario: activeUser?.id || null }); setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setLoginPassword(""); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
+              <button onClick={handleLogout} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
