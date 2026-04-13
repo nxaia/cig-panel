@@ -1020,7 +1020,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
               style={{ ...inputStyle, background: "#fff" }}
             />
             <div style={{ marginTop: 8, fontSize: 12, color: C.dim }}>
-              Si es la primera vez para ese usuario, la contraseña que cargues quedará registrada.
+              Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Usuario entra solo en modo consulta.
             </div>
           </div>
 
@@ -1683,12 +1683,16 @@ export default function App() {
       setLoginError("Seleccioná un usuario habilitado para ingresar.");
       return;
     }
-    if (!loginPassword.trim()) {
-      setLoginError("Ingresá la contraseña.");
-      return;
-    }
     if (!supabase) {
       setLoginError("Faltan las variables de entorno de Supabase.");
+      return;
+    }
+
+    const incomingPassword = cleanText(loginPassword);
+    const requiresPassword = selectedUser.canEdit;
+
+    if (requiresPassword && !incomingPassword) {
+      setLoginError("Ingresá la contraseña.");
       return;
     }
 
@@ -1696,12 +1700,29 @@ export default function App() {
     setLoginError("");
     setAccessSyncStatus({ kind: "", text: "" });
 
-    const { data: panelUser, error: panelUserError } = await supabase
+    let panelUser = null;
+    let panelUserError = null;
+
+    const byNameResult = await supabase
       .from("panel_usuarios")
       .select("*")
       .eq("nombre", selectedUser.nombre)
       .limit(1)
       .maybeSingle();
+
+    panelUser = byNameResult.data || null;
+    panelUserError = byNameResult.error || null;
+
+    if (!panelUser && !panelUserError) {
+      const byKeyResult = await supabase
+        .from("panel_usuarios")
+        .select("*")
+        .eq("usuario_clave", selectedUser.id)
+        .limit(1)
+        .maybeSingle();
+      panelUser = byKeyResult.data || null;
+      panelUserError = byKeyResult.error || null;
+    }
 
     if (panelUserError) {
       setLoginError(`No se pudo validar el usuario: ${panelUserError.message}`);
@@ -1716,27 +1737,28 @@ export default function App() {
     }
 
     const currentPassword = cleanText(panelUser.password_hash || "");
-    const incomingPassword = cleanText(loginPassword);
 
-    if (!currentPassword) {
-      const { error: savePasswordError } = await supabase
-        .from("panel_usuarios")
-        .update({
-          password_hash: incomingPassword,
-          password_set_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", panelUser.id);
+    if (requiresPassword) {
+      if (!currentPassword) {
+        const { error: savePasswordError } = await supabase
+          .from("panel_usuarios")
+          .update({
+            password_hash: incomingPassword,
+            password_set_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", panelUser.id);
 
-      if (savePasswordError) {
-        setLoginError(`No se pudo registrar la contraseña inicial: ${savePasswordError.message}`);
+        if (savePasswordError) {
+          setLoginError(`No se pudo registrar la contraseña inicial: ${savePasswordError.message}`);
+          setLoginLoading(false);
+          return;
+        }
+      } else if (currentPassword !== incomingPassword) {
+        setLoginError("La contraseña no coincide con la registrada para este usuario.");
         setLoginLoading(false);
         return;
       }
-    } else if (currentPassword !== incomingPassword) {
-      setLoginError("La contraseña no coincide con la registrada para este usuario.");
-      setLoginLoading(false);
-      return;
     }
 
     const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
