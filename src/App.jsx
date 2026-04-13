@@ -894,8 +894,9 @@ function Doc({ doc }) {
   );
 }
 
-function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange }) {
+function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange, onOpenChangePassword, onOpenManualReset }) {
   const [showPassword, setShowPassword] = useState(false);
+  const selectedNeedsPassword = selectedUserId !== "emanuel-aguilar";
   return (
     <div
       style={{
@@ -1063,6 +1064,17 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Usuario entra solo en modo consulta.
               </div>
 
+              {selectedNeedsPassword ? (
+                <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+                  <button type="button" onClick={onOpenChangePassword} style={{ ...btnGhost, padding: "8px 12px", fontSize: 12 }}>
+                    Cambiar contraseña
+                  </button>
+                  <button type="button" onClick={onOpenManualReset} style={{ ...btnGhost, padding: "8px 12px", fontSize: 12 }}>
+                    Reset manual admin
+                  </button>
+                </div>
+              ) : null}
+
               {loginError ? (
                 <div
                   style={{
@@ -1098,6 +1110,101 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
               </div>
             </form>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, onSubmit, loading, error }) {
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNext, setShowNext] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [nextPassword, setNextPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [targetUserId, setTargetUserId] = useState(selectedUserId || "estela-palacios");
+  const [localError, setLocalError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setCurrentPassword("");
+      setNextPassword("");
+      setConfirmPassword("");
+      setLocalError("");
+      setTargetUserId(selectedUserId || "estela-palacios");
+      setShowCurrent(false);
+      setShowNext(false);
+      setShowConfirm(false);
+    }
+  }, [open, selectedUserId, mode]);
+
+  if (!open) return null;
+
+  const title = mode === "change" ? "Cambiar contraseña" : "Reset manual admin";
+  const helper = mode === "change"
+    ? "Ingresá la contraseña actual y definí la nueva."
+    : "Usá esta opción para resetear la clave manualmente para Estela o Carlos.";
+
+  const submit = () => {
+    setLocalError("");
+    if (!nextPassword || nextPassword.length < 4) {
+      setLocalError("La nueva contraseña debe tener al menos 4 caracteres.");
+      return;
+    }
+    if (nextPassword !== confirmPassword) {
+      setLocalError("La confirmación no coincide.");
+      return;
+    }
+    if (mode === "change" && !currentPassword) {
+      setLocalError("Ingresá la contraseña actual.");
+      return;
+    }
+    onSubmit({ targetUserId, currentPassword, nextPassword });
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.35)", backdropFilter: "blur(4px)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 520, margin: "0 16px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.15)" }}>
+        <div style={{ background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", padding: "18px 20px", color: "#fff" }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>{title}</div>
+          <div style={{ fontSize: 12, color: "#bae6fd", marginTop: 4 }}>{helper}</div>
+        </div>
+        <div style={{ padding: 20, display: "grid", gap: 12 }}>
+          {mode === "reset" ? (
+            <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)} style={inputStyle}>
+              <option value="estela-palacios">Estela Palacios</option>
+              <option value="carlos-chauvet">Carlos Chauvet</option>
+            </select>
+          ) : (
+            <div style={{ ...inputStyle, background: "#f8fafc", display: "flex", alignItems: "center", minHeight: 42 }}>
+              {LOGIN_USERS.find((u) => u.id === selectedUserId)?.nombre || "Usuario"}
+            </div>
+          )}
+
+          {mode === "change" ? (
+            <div style={{ position: "relative" }}>
+              <input type={showCurrent ? "text" : "password"} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Contraseña actual" style={{ ...inputStyle, paddingRight: 44, background: "#fff" }} />
+              <button type="button" onClick={() => setShowCurrent((v) => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: C.muted, fontSize: 18, padding: 0 }}>{showCurrent ? "🙈" : "👁"}</button>
+            </div>
+          ) : null}
+
+          <div style={{ position: "relative" }}>
+            <input type={showNext ? "text" : "password"} value={nextPassword} onChange={(e) => setNextPassword(e.target.value)} placeholder="Nueva contraseña" style={{ ...inputStyle, paddingRight: 44, background: "#fff" }} />
+            <button type="button" onClick={() => setShowNext((v) => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: C.muted, fontSize: 18, padding: 0 }}>{showNext ? "🙈" : "👁"}</button>
+          </div>
+
+          <div style={{ position: "relative" }}>
+            <input type={showConfirm ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirmar nueva contraseña" style={{ ...inputStyle, paddingRight: 44, background: "#fff" }} />
+            <button type="button" onClick={() => setShowConfirm((v) => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: C.muted, fontSize: 18, padding: 0 }}>{showConfirm ? "🙈" : "👁"}</button>
+          </div>
+
+          {localError ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px", fontSize: 13 }}>{localError}</div> : null}
+          {error ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px", fontSize: 13 }}>{error}</div> : null}
+        </div>
+        <div style={{ padding: "0 20px 20px", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button onClick={onClose} style={btnGhost} disabled={loading}>Cancelar</button>
+          <button onClick={submit} style={btnPrimary} disabled={loading}>{loading ? "Guardando..." : "Guardar"}</button>
         </div>
       </div>
     </div>
@@ -1544,6 +1651,10 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordModalMode, setPasswordModalMode] = useState("change");
+  const [passwordModalLoading, setPasswordModalLoading] = useState(false);
+  const [passwordModalError, setPasswordModalError] = useState("");
   const [accessSyncStatus, setAccessSyncStatus] = useState({ kind: "", text: "" });
   const [accessHistory, setAccessHistory] = useState([]);
 
@@ -1770,6 +1881,60 @@ export default function App() {
       setLoginError(err.message || "No se pudo iniciar sesión.");
     } finally {
       setLoginLoading(false);
+    }
+  }
+
+  async function handlePasswordAction({ targetUserId, currentPassword, nextPassword }) {
+    if (!supabase) {
+      setPasswordModalError("Faltan las variables de entorno de Supabase.");
+      return;
+    }
+
+    setPasswordModalLoading(true);
+    setPasswordModalError("");
+
+    try {
+      const usuarioClave = getLoginClaveById(targetUserId);
+      const targetUser = LOGIN_USERS.find((u) => u.id === targetUserId);
+
+      if (!usuarioClave || !targetUser || targetUserId === "emanuel-aguilar") {
+        throw new Error("Solo Estela y Carlos pueden usar esta función.");
+      }
+
+      const { data: panelUser, error: panelUserError } = await supabase
+        .from("panel_usuarios")
+        .select("id, password_hash")
+        .eq("usuario_clave", usuarioClave)
+        .maybeSingle();
+
+      if (panelUserError) throw new Error(panelUserError.message || "No se pudo validar el usuario.");
+      if (!panelUser) throw new Error("El usuario no existe en la tabla panel_usuarios.");
+
+      if (passwordModalMode === "change") {
+        const currentHash = await hashPassword(currentPassword);
+        if (panelUser.password_hash && panelUser.password_hash !== currentHash) {
+          throw new Error("La contraseña actual es incorrecta.");
+        }
+      }
+
+      const nextHash = await hashPassword(nextPassword);
+      const { error: updateError } = await supabase
+        .from("panel_usuarios")
+        .update({
+          password_hash: nextHash,
+          password_set_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", panelUser.id);
+
+      if (updateError) throw new Error(updateError.message || "No se pudo guardar la contraseña.");
+
+      setPasswordModalOpen(false);
+      setNotice(passwordModalMode === "change" ? "Contraseña actualizada correctamente." : `Contraseña reseteada para ${targetUser.nombre}.`);
+    } catch (err) {
+      setPasswordModalError(err.message || "No se pudo actualizar la contraseña.");
+    } finally {
+      setPasswordModalLoading(false);
     }
   }
 
@@ -2365,7 +2530,7 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} loginPassword={loginPassword} onPasswordChange={setLoginPassword} />;
+    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} loginPassword={loginPassword} onPasswordChange={setLoginPassword} onOpenChangePassword={() => { setPasswordModalMode("change"); setPasswordModalError(""); setPasswordModalOpen(true); }} onOpenManualReset={() => { setPasswordModalMode("reset"); setPasswordModalError(""); setPasswordModalOpen(true); }} />;
   }
 
   return (
@@ -2407,6 +2572,8 @@ export default function App() {
               <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setLoginPassword(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
+              {activeUser?.id !== "emanuel-aguilar" ? <button onClick={() => { setPasswordModalMode("change"); setPasswordModalError(""); setPasswordModalOpen(true); }} style={btnGhost}>Cambiar contraseña</button> : null}
+              {canEdit ? <button onClick={() => { setPasswordModalMode("reset"); setPasswordModalError(""); setPasswordModalOpen(true); }} style={btnGhost}>Reset manual admin</button> : null}
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
             </div>
           </header>
@@ -2588,6 +2755,7 @@ export default function App() {
       </div>
 
       <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} />
+      <PasswordAdminModal open={passwordModalOpen} mode={passwordModalMode} selectedUserId={passwordModalMode === "change" ? (activeUser?.id || selectedLoginUserId) : selectedLoginUserId} onClose={() => { setPasswordModalOpen(false); setPasswordModalError(""); }} onSubmit={handlePasswordAction} loading={passwordModalLoading} error={passwordModalError} />
       <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} />
     </div>
   );
