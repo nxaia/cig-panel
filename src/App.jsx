@@ -133,14 +133,15 @@ const BARRIOS = {
 };
 
 const LOGIN_USERS = [
-  { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
-  { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
+  { id: "estela", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
+  { id: "carlos", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
   { id: "usuario", nombre: "Usuario", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
 
+const LOGIN_SESSION_KEY = "cig_panel_login_session_v2";
+
 const PAGE_SIZE = 5;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
-const ACTIVE_SESSION_KEY = "cig_panel_active_session_v1";
 
 
 const TABLE_COLGROUP = [
@@ -878,13 +879,11 @@ function Doc({ doc }) {
   );
 }
 
-function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange }) {
+function LoginScreen({ selectedUserId, onSelectUser, password, onPasswordChange, onIngresar, loginLoading, loginError }) {
   return (
     <div
       style={{
-        position: "fixed",
-        inset: 0,
-        width: "100%",
+        width: "100vw",
         height: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
@@ -1011,15 +1010,12 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
             <div style={labelStyle}>Contraseña</div>
             <input
               type="password"
-              value={loginPassword}
+              value={password}
               onChange={(e) => onPasswordChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !loginLoading && selectedUserId && loginPassword.trim()) onIngresar();
-              }}
               placeholder="Ingresá la contraseña"
               style={{ ...inputStyle, background: "#fff" }}
             />
-            <div style={{ marginTop: 8, fontSize: 12, color: C.dim }}>
+            <div style={{ marginTop: 8, color: C.dim, fontSize: 12 }}>
               Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Usuario entra solo en modo consulta.
             </div>
           </div>
@@ -1044,14 +1040,14 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ marginTop: 18 }}>
             <button
               onClick={onIngresar}
-              disabled={loginLoading || !selectedUserId || !loginPassword.trim()}
+              disabled={loginLoading || !selectedUserId}
               style={{
                 ...btnPrimary,
                 padding: "13px 28px",
                 fontSize: 15,
                 borderRadius: 12,
-                opacity: loginLoading || !selectedUserId || !loginPassword.trim() ? 0.7 : 1,
-                cursor: loginLoading || !selectedUserId || !loginPassword.trim() ? "not-allowed" : "pointer",
+                opacity: loginLoading || !selectedUserId ? 0.7 : 1,
+                cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
               }}
             >
               {loginLoading ? "Ingresando..." : "Ingresar al panel"}
@@ -1062,6 +1058,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
     </div>
   );
 }
+
 
 function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [], onNext, modalIndex = 0, modalTotal = 0 }) {
   const [draft, setDraft] = useState(item || null);
@@ -1524,6 +1521,27 @@ export default function App() {
   const canEdit = Boolean(activeUser?.canEdit);
   const barrioFilterOptions = useMemo(() => buildBarrioFilterOptions(), []);
 
+
+  function getLoginAliases(user) {
+    const base = [
+      user?.id,
+      user?.nombre,
+      user?.nombre?.toLowerCase(),
+      user?.nombre?.toUpperCase(),
+    ].filter(Boolean);
+
+    if (user?.id === "estela") base.push("estela-palacios", "estela palacios");
+    if (user?.id === "carlos") base.push("carlos-chauvet", "carlos chauvet");
+    if (user?.id === "usuario") base.push("emanuel-aguilar", "emanuel aguilar", "usuario");
+
+    return [...new Set(base.map((v) => String(v).trim()).filter(Boolean))];
+  }
+
+  function getStoredPasswordValue(row) {
+    if (!row) return "";
+    return row.password_hash || row.password || row.clave || row.contrasena || "";
+  }
+
   const stats = useMemo(() => ({
     total: data.length,
     proceso: data.filter((e) => e.estado === "en_proceso").length,
@@ -1531,6 +1549,33 @@ export default function App() {
     atrasados: data.filter((e) => e.dias >= 14).length,
     completos: data.filter((e) => getExpedienteCompleteness(e, planosByExpediente[e.id] || []).level === "alto").length,
   }), [data, planosByExpediente]);
+
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOGIN_SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.id) {
+        const loginUser = LOGIN_USERS.find((user) => user.id === parsed.id);
+        if (loginUser) {
+          setActiveUser({ ...loginUser, lastLoginAt: parsed.lastLoginAt || new Date().toISOString() });
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 3500);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
+    if (!accessSyncStatus?.text) return;
+    const timer = setTimeout(() => setAccessSyncStatus({ kind: "", text: "" }), 3000);
+    return () => clearTimeout(timer);
+  }, [accessSyncStatus]);
 
   useEffect(() => {
     try {
@@ -1540,59 +1585,10 @@ export default function App() {
       setAccessHistory([]);
     }
   }, []);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(ACTIVE_SESSION_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed?.id) return;
-      const matched = LOGIN_USERS.find((item) => item.id === parsed.id);
-      if (!matched) return;
-      setActiveUser({ ...matched, ...parsed });
-      setSelectedLoginUserId(parsed.id);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = setTimeout(() => setNotice(""), 3000);
-    return () => clearTimeout(timer);
-  }, [notice]);
-
-  useEffect(() => {
-    if (!error) return;
-    const timer = setTimeout(() => setError(""), 4000);
-    return () => clearTimeout(timer);
-  }, [error]);
-
-  useEffect(() => {
-    if (!accessSyncStatus.text) return;
-    const timer = setTimeout(() => setAccessSyncStatus({ kind: "", text: "" }), 3000);
-    return () => clearTimeout(timer);
-  }, [accessSyncStatus]);
-
 
   useEffect(() => {
     if (activeUser) loadInitialData();
   }, [activeUser]);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = setTimeout(() => setNotice(""), 3500);
-    return () => clearTimeout(timer);
-  }, [notice]);
-
-  useEffect(() => {
-    if (!error) return;
-    const timer = setTimeout(() => setError(""), 5000);
-    return () => clearTimeout(timer);
-  }, [error]);
-
-  useEffect(() => {
-    if (!accessSyncStatus?.text) return;
-    const timer = setTimeout(() => setAccessSyncStatus({ kind: "", text: "" }), 3500);
-    return () => clearTimeout(timer);
-  }, [accessSyncStatus]);
 
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => clearTimeout(timer));
@@ -1695,6 +1691,7 @@ export default function App() {
     setRefreshing(false);
   }
 
+
   async function handleLogin() {
     const selectedUser = LOGIN_USERS.find((u) => u.id === selectedLoginUserId);
     if (!selectedUser) {
@@ -1706,41 +1703,62 @@ export default function App() {
       return;
     }
 
-    const incomingPassword = cleanText(loginPassword);
-    const requiresPassword = selectedUser.canEdit;
-
-    if (requiresPassword && !incomingPassword) {
-      setLoginError("Ingresá la contraseña.");
-      return;
-    }
-
     setLoginLoading(true);
     setLoginError("");
     setAccessSyncStatus({ kind: "", text: "" });
 
-    let panelUser = null;
+    const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
+    let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
 
-    const { data: panelUsers, error: panelUsersError } = await supabase
-      .from("panel_usuarios")
-      .select("*");
+    if (selectedUser.id === "usuario") {
+      const insertResult = await supabase.from("panel_accesos").insert(entry);
+      if (insertResult.error) {
+        syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
+      }
 
-    if (panelUsersError) {
-      setLoginError(`No se pudo validar el usuario: ${panelUsersError.message}`);
+      const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
+      let nextHistory = [];
+      try {
+        const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
+        const current = raw ? JSON.parse(raw) : [];
+        nextHistory = [localEntry, ...current].slice(0, 10);
+        localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
+      } catch {
+        nextHistory = [localEntry];
+      }
+
+      setAccessHistory(nextHistory);
+      const sessionUser = { ...selectedUser, lastLoginAt: entry.fecha_ingreso };
+      setActiveUser(sessionUser);
+      localStorage.setItem(LOGIN_SESSION_KEY, JSON.stringify({ id: selectedUser.id, lastLoginAt: entry.fecha_ingreso }));
+      setAccessSyncStatus(syncStatus);
+      setLoginPassword("");
       setLoginLoading(false);
       return;
     }
 
-    const normalizeValue = (value) => cleanText(value).toLowerCase();
+    if (!loginPassword.trim()) {
+      setLoginError("Ingresá una contraseña para continuar.");
+      setLoginLoading(false);
+      return;
+    }
 
-    panelUser = (panelUsers || []).find((row) => {
-      const nombre = normalizeValue(row.nombre);
-      const usuarioClave = normalizeValue(row.usuario_clave);
-      return (
-        nombre === normalizeValue(selectedUser.nombre) ||
-        usuarioClave === normalizeValue(selectedUser.usuarioClave) ||
-        usuarioClave === normalizeValue(selectedUser.id)
-      );
-    }) || null;
+    const aliases = getLoginAliases(selectedUser);
+    const { data: panelUsers, error: panelUsersError } = await supabase.from("panel_usuarios").select("*");
+    if (panelUsersError) {
+      setLoginError(`No se pudo consultar panel_usuarios: ${panelUsersError.message}`);
+      setLoginLoading(false);
+      return;
+    }
+
+    const panelUser = (panelUsers || []).find((row) => {
+      const clave = String(row.usuario_clave || "").trim().toLowerCase();
+      const nombre = String(row.nombre || "").trim().toLowerCase();
+      return aliases.some((alias) => {
+        const normalized = String(alias).trim().toLowerCase();
+        return normalized === clave || normalized === nombre;
+      });
+    });
 
     if (!panelUser) {
       setLoginError("El usuario no existe en la tabla panel_usuarios.");
@@ -1748,33 +1766,24 @@ export default function App() {
       return;
     }
 
-    const currentPassword = cleanText(panelUser.password_hash || "");
+    const savedPassword = getStoredPasswordValue(panelUser);
 
-    if (requiresPassword) {
-      if (!currentPassword) {
-        const { error: savePasswordError } = await supabase
-          .from("panel_usuarios")
-          .update({
-            password_hash: incomingPassword,
-            password_set_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", panelUser.id);
+    if (!savedPassword) {
+      const passwordPayload = { password_hash: loginPassword.trim() };
+      if (Object.prototype.hasOwnProperty.call(panelUser, "password_set_at")) passwordPayload.password_set_at = new Date().toISOString();
+      if (Object.prototype.hasOwnProperty.call(panelUser, "updated_at")) passwordPayload.updated_at = new Date().toISOString();
 
-        if (savePasswordError) {
-          setLoginError(`No se pudo registrar la contraseña inicial: ${savePasswordError.message}`);
-          setLoginLoading(false);
-          return;
-        }
-      } else if (currentPassword !== incomingPassword) {
-        setLoginError("La contraseña no coincide con la registrada para este usuario.");
+      const { error: passwordSaveError } = await supabase.from("panel_usuarios").update(passwordPayload).eq("id", panelUser.id);
+      if (passwordSaveError) {
+        setLoginError(`No se pudo registrar la contraseña: ${passwordSaveError.message}`);
         setLoginLoading(false);
         return;
       }
+    } else if (savedPassword !== loginPassword.trim()) {
+      setLoginError("Contraseña incorrecta.");
+      setLoginLoading(false);
+      return;
     }
-
-    const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
-    let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
 
     const insertResult = await supabase.from("panel_accesos").insert(entry);
     if (insertResult.error) {
@@ -1793,7 +1802,9 @@ export default function App() {
     }
 
     setAccessHistory(nextHistory);
-    setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
+    const sessionUser = { ...selectedUser, lastLoginAt: entry.fecha_ingreso };
+    setActiveUser(sessionUser);
+    localStorage.setItem(LOGIN_SESSION_KEY, JSON.stringify({ id: selectedUser.id, lastLoginAt: entry.fecha_ingreso }));
     setAccessSyncStatus(syncStatus);
     setLoginPassword("");
     setLoginLoading(false);
@@ -2391,17 +2402,7 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return (
-      <LoginScreen
-        selectedUserId={selectedLoginUserId}
-        onSelectUser={setSelectedLoginUserId}
-        onIngresar={handleLogin}
-        loginLoading={loginLoading}
-        loginError={loginError}
-        loginPassword={loginPassword}
-        onPasswordChange={setLoginPassword}
-      />
-    );
+    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} password={loginPassword} onPasswordChange={setLoginPassword} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
   }
 
   return (
@@ -2440,16 +2441,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={() => {
-                try { localStorage.removeItem(ACTIVE_SESSION_KEY); } catch {}
-                setActiveUser(null);
-                setSelectedLoginUserId(LOGIN_USERS[0].id);
-                setLoginPassword("");
-                setActiveNav("Dashboard");
-                setLoginError("");
-                setNotice("");
-                setAccessSyncStatus({ kind: "", text: "" });
-              }} style={btnGhost}>Salir</button>
+              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setLoginPassword(""); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); localStorage.removeItem(LOGIN_SESSION_KEY); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
