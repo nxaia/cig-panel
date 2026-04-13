@@ -881,14 +881,15 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
   return (
     <div
       style={{
-        height: "100vh",
+        minHeight: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "center",
         padding: 16,
         boxSizing: "border-box",
-        overflow: "hidden",
+        overflowX: "hidden",
+        overflowY: "auto",
       }}
     >
       <div
@@ -897,10 +898,12 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           maxWidth: 760,
           background: "#fff",
           borderRadius: 28,
-          overflow: "hidden",
+          overflowX: "hidden",
           boxShadow: "0 24px 80px rgba(15,23,42,.12)",
           border: `1px solid ${C.border}`,
           maxHeight: "calc(100vh - 32px)",
+          overflowY: "auto",
+          margin: "auto 0",
         }}
       >
         <div style={{ height: 8, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
