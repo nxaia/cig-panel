@@ -1576,6 +1576,24 @@ export default function App() {
     if (activeUser) loadInitialData();
   }, [activeUser]);
 
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 3500);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(""), 5000);
+    return () => clearTimeout(timer);
+  }, [error]);
+
+  useEffect(() => {
+    if (!accessSyncStatus?.text) return;
+    const timer = setTimeout(() => setAccessSyncStatus({ kind: "", text: "" }), 3500);
+    return () => clearTimeout(timer);
+  }, [accessSyncStatus]);
+
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => clearTimeout(timer));
   }, []);
@@ -1701,34 +1719,28 @@ export default function App() {
     setAccessSyncStatus({ kind: "", text: "" });
 
     let panelUser = null;
-    let panelUserError = null;
 
-    const byNameResult = await supabase
+    const { data: panelUsers, error: panelUsersError } = await supabase
       .from("panel_usuarios")
-      .select("*")
-      .eq("nombre", selectedUser.nombre)
-      .limit(1)
-      .maybeSingle();
+      .select("*");
 
-    panelUser = byNameResult.data || null;
-    panelUserError = byNameResult.error || null;
-
-    if (!panelUser && !panelUserError) {
-      const byKeyResult = await supabase
-        .from("panel_usuarios")
-        .select("*")
-        .eq("usuario_clave", selectedUser.id)
-        .limit(1)
-        .maybeSingle();
-      panelUser = byKeyResult.data || null;
-      panelUserError = byKeyResult.error || null;
-    }
-
-    if (panelUserError) {
-      setLoginError(`No se pudo validar el usuario: ${panelUserError.message}`);
+    if (panelUsersError) {
+      setLoginError(`No se pudo validar el usuario: ${panelUsersError.message}`);
       setLoginLoading(false);
       return;
     }
+
+    const normalizeValue = (value) => cleanText(value).toLowerCase();
+
+    panelUser = (panelUsers || []).find((row) => {
+      const nombre = normalizeValue(row.nombre);
+      const usuarioClave = normalizeValue(row.usuario_clave);
+      return (
+        nombre === normalizeValue(selectedUser.nombre) ||
+        usuarioClave === normalizeValue(selectedUser.usuarioClave) ||
+        usuarioClave === normalizeValue(selectedUser.id)
+      );
+    }) || null;
 
     if (!panelUser) {
       setLoginError("El usuario no existe en la tabla panel_usuarios.");
@@ -1780,23 +1792,8 @@ export default function App() {
       nextHistory = [localEntry];
     }
 
-    const sessionPayload = {
-      id: selectedUser.id,
-      nombre: selectedUser.nombre,
-      rol: selectedUser.rol,
-      area: panelUser.area || selectedUser.area,
-      tecnico: panelUser.tecnico ?? selectedUser.tecnico,
-      canEdit: panelUser.can_edit ?? selectedUser.canEdit,
-      panelUserId: panelUser.id,
-      lastLoginAt: entry.fecha_ingreso,
-    };
-
-    try {
-      localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(sessionPayload));
-    } catch {}
-
     setAccessHistory(nextHistory);
-    setActiveUser(sessionPayload);
+    setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
     setAccessSyncStatus(syncStatus);
     setLoginPassword("");
     setLoginLoading(false);
