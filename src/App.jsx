@@ -135,7 +135,7 @@ const BARRIOS = {
 const LOGIN_USERS = [
   { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
   { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
-  { id: "usuario", nombre: "Usuario", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
+  { id: "emanuel-aguilar", nombre: "Emanuel Aguilar", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
 
 const PAGE_SIZE = 5;
@@ -877,32 +877,35 @@ function Doc({ doc }) {
   );
 }
 
+function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError }) {
+  useEffect(() => {
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyMargin = document.body.style.margin;
+    const previousBodyWidth = document.body.style.width;
+    const previousBodyHeight = document.body.style.height;
 
-async function hashPassword(value) {
-  const text = String(value || "");
-  const data = new TextEncoder().encode(text);
-  const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    document.body.style.margin = "0";
+    document.body.style.width = "100vw";
+    document.body.style.height = "100vh";
 
-async function getPanelUserRecord(usuarioClave) {
-  if (!supabase || !usuarioClave) return { data: null, error: new Error("Usuario inválido.") };
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.margin = previousBodyMargin;
+      document.body.style.width = previousBodyWidth;
+      document.body.style.height = previousBodyHeight;
+    };
+  }, []);
 
-  const result = await supabase
-    .from("panel_usuarios")
-    .select("id, nombre, usuario_clave, password_hash, password_set_at, activo, can_edit, tecnico, rol, area")
-    .eq("usuario_clave", usuarioClave)
-    .maybeSingle();
-
-  return result;
-}
-
-function LoginScreen({ selectedUserId, onSelectUser, loginPassword, onPasswordChange, onIngresar, loginLoading, loginError }) {
   return (
     <div
       style={{
+        position: "fixed",
+        inset: 0,
+        width: "100vw",
         height: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
@@ -915,7 +918,7 @@ function LoginScreen({ selectedUserId, onSelectUser, loginPassword, onPasswordCh
     >
       <div
         style={{
-          width: "100%",
+          width: "min(100%, 760px)",
           maxWidth: 760,
           background: "#fff",
           borderRadius: 28,
@@ -1023,24 +1026,6 @@ function LoginScreen({ selectedUserId, onSelectUser, loginPassword, onPasswordCh
                 </button>
               );
             })}
-          </div>
-
-          <div style={{ maxWidth: 480, margin: "16px auto 0", textAlign: "left" }}>
-            <div style={{ ...labelStyle, marginBottom: 6 }}>Contraseña</div>
-            <input
-              type="password"
-              value={loginPassword}
-              onChange={(e) => onPasswordChange(e.target.value)}
-              placeholder="Ingresá la contraseña"
-              style={{
-                ...inputStyle,
-                background: "#fff",
-                height: 46,
-              }}
-            />
-            <div style={{ marginTop: 8, fontSize: 12, color: C.dim }}>
-              Si es la primera vez para ese usuario, la contraseña que cargues quedará registrada.
-            </div>
           </div>
 
           {loginError ? (
@@ -1518,7 +1503,6 @@ export default function App() {
   const [hiddenDuplicateCount, setHiddenDuplicateCount] = useState(0);
 
   const [selectedLoginUserId, setSelectedLoginUserId] = useState(LOGIN_USERS[0].id);
-  const [loginPassword, setLoginPassword] = useState("");
   const [activeUser, setActiveUser] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -1563,15 +1547,6 @@ export default function App() {
   useEffect(() => {
     if (activeUser) loadInitialData();
   }, [activeUser]);
-
-  useEffect(() => {
-    if (!notice && !accessSyncStatus?.text) return;
-    const timer = setTimeout(() => {
-      setNotice("");
-      setAccessSyncStatus((prev) => (prev?.text ? { kind: "", text: "" } : prev));
-    }, 3500);
-    return () => clearTimeout(timer);
-  }, [notice, accessSyncStatus]);
 
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => clearTimeout(timer));
@@ -1685,80 +1660,34 @@ export default function App() {
       return;
     }
 
-    const plainPassword = String(loginPassword || "").trim();
-    if (!plainPassword) {
-      setLoginError("Ingresá la contraseña para continuar.");
-      return;
-    }
-
     setLoginLoading(true);
     setLoginError("");
     setAccessSyncStatus({ kind: "", text: "" });
 
-    try {
-      const { data: panelUser, error: panelUserError } = await getPanelUserRecord(selectedUser.id);
+    const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
+    let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
 
-      if (panelUserError) {
-        throw new Error(panelUserError.message || "No se pudo validar el usuario.");
-      }
-
-      if (!panelUser) {
-        throw new Error("El usuario no existe en la tabla panel_usuarios.");
-      }
-
-      if (panelUser.activo === false) {
-        throw new Error("Este usuario está inactivo.");
-      }
-
-      const passwordHash = await hashPassword(plainPassword);
-
-      if (!panelUser.password_hash) {
-        const { error: savePasswordError } = await supabase
-          .from("panel_usuarios")
-          .update({
-            password_hash: passwordHash,
-            password_set_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("usuario_clave", selectedUser.id);
-
-        if (savePasswordError) {
-          throw new Error(savePasswordError.message || "No se pudo registrar la contraseña inicial.");
-        }
-      } else if (panelUser.password_hash !== passwordHash) {
-        throw new Error("La contraseña ingresada no coincide.");
-      }
-
-      const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
-      let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
-
-      const insertResult = await supabase.from("panel_accesos").insert(entry);
-      if (insertResult.error) {
-        syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
-      }
-
-      const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
-      let nextHistory = [];
-      try {
-        const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
-        const current = raw ? JSON.parse(raw) : [];
-        nextHistory = [localEntry, ...current].slice(0, 10);
-        localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
-      } catch {
-        nextHistory = [localEntry];
-      }
-
-      setAccessHistory(nextHistory);
-      setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso, canEdit: panelUser.can_edit ?? selectedUser.canEdit, tecnico: panelUser.tecnico ?? selectedUser.tecnico });
-      setAccessSyncStatus(syncStatus);
-      setLoginPassword("");
-    } catch (err) {
-      setLoginError(err.message || "No se pudo iniciar sesión.");
-    } finally {
-      setLoginLoading(false);
+    const insertResult = await supabase.from("panel_accesos").insert(entry);
+    if (insertResult.error) {
+      syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
     }
-  }
 
+    const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
+    let nextHistory = [];
+    try {
+      const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
+      const current = raw ? JSON.parse(raw) : [];
+      nextHistory = [localEntry, ...current].slice(0, 10);
+      localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
+    } catch {
+      nextHistory = [localEntry];
+    }
+
+    setAccessHistory(nextHistory);
+    setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
+    setAccessSyncStatus(syncStatus);
+    setLoginLoading(false);
+  }
 
   async function addExpediente(form) {
     if (!supabase || !canEdit) return;
@@ -2352,7 +2281,7 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} loginPassword={loginPassword} onPasswordChange={setLoginPassword} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
+    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
   }
 
   return (
@@ -2391,7 +2320,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setLoginPassword(""); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
+              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
