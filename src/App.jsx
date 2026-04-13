@@ -287,6 +287,23 @@ function cleanText(value) {
   return String(value || "").trim();
 }
 
+async function hashPassword(value) {
+  const raw = cleanText(value);
+  const encoder = new TextEncoder();
+  const data = encoder.encode(raw);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function getLoginClaveById(userId) {
+  if (userId === "estela-palacios") return "estela";
+  if (userId === "carlos-chauvet") return "carlos";
+  if (userId === "emanuel-aguilar") return "usuario";
+  return "";
+}
+
 function normalizeTitular(value) {
   return cleanText(value).replace(/\s+/g, " ").toUpperCase();
 }
@@ -338,7 +355,6 @@ function getPreviewType(fileName = "", mimeType = "") {
   const extension = getFileExtension(fileName);
   if (["jpg", "jpeg", "png", "webp"].includes(extension) || String(mimeType || "").startsWith("image/")) return "image";
   if (extension === "pdf" || mimeType === "application/pdf") return "pdf";
-  if (["doc", "docx", "xls", "xlsx", "csv"].includes(extension)) return "office";
   return "other";
 }
 
@@ -363,18 +379,7 @@ function getAttachmentLabel(fileName = "", mimeType = "") {
 
 function isPreviewableAttachment(fileName = "", mimeType = "") {
   const ext = getFileExtension(fileName);
-  return mimeType === "application/pdf"
-    || String(mimeType).startsWith("image/")
-    || ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "xls", "xlsx", "csv"].includes(ext);
-}
-
-function getAttachmentOpenUrl(fileName = "", mimeType = "", publicUrl = "") {
-  if (!publicUrl) return "";
-  const previewType = getPreviewType(fileName, mimeType);
-  if (previewType === "office") {
-    return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(publicUrl)}`;
-  }
-  return publicUrl;
+  return mimeType === "application/pdf" || String(mimeType).startsWith("image/") || ["pdf", "jpg", "jpeg", "png", "webp"].includes(ext);
 }
 
 function getExpedienteCompleteness(expediente, attachments = []) {
@@ -889,7 +894,7 @@ function Doc({ doc }) {
   );
 }
 
-function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError }) {
+function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange }) {
   return (
     <div
       style={{
@@ -970,7 +975,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ fontSize: 21, color: C.slate, fontWeight: 800, marginTop: 4 }}>Regularización Dominial y Hábitat</div>
 
           <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>
-            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado para continuar.
+            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
           </div>
 
           <div style={{ maxWidth: 480, margin: "20px auto 0", display: "grid", gap: 12 }}>
@@ -1013,6 +1018,21 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 </button>
               );
             })}
+          </div>
+
+
+          <div style={{ maxWidth: 480, margin: "16px auto 0", textAlign: "left" }}>
+            <div style={{ ...labelStyle, marginBottom: 6 }}>Contraseña</div>
+            <input
+              type="password"
+              value={loginPassword}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              placeholder="Ingresá la contraseña"
+              style={{ ...inputStyle, background: "#fff" }}
+            />
+            <div style={{ marginTop: 8, fontSize: 12, color: C.dim }}>
+              Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Usuario entra solo en modo consulta.
+            </div>
           </div>
 
           {loginError ? (
@@ -1201,7 +1221,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                             <button type="button" onClick={() => setPreviewFileId(String(plano.id))} style={{ ...btnGhost, padding: "7px 10px", fontSize: 12, color: C.sky }}>Ver</button>
-                            <a href={getAttachmentOpenUrl(plano.nombreOriginal, plano.tipoMime, plano.publicUrl)} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
+                            <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
                             <a href={plano.publicUrl} download style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Descargar</a>
                             {canEdit ? (
                               <button
@@ -1223,7 +1243,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                     <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, background: "#fff", overflow: "hidden" }}>
                       <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                         <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>Vista previa: {previewTarget.nombreOriginal}</div>
-                        <a href={getAttachmentOpenUrl(previewTarget.nombreOriginal, previewTarget.tipoMime, previewTarget.publicUrl)} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir en pestaña</a>
+                        <a href={previewTarget.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir en pestaña</a>
                       </div>
                       {getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "image" ? (
                         <div style={{ padding: 12, background: "#f8fafc", display: "flex", justifyContent: "center" }}>
@@ -1231,8 +1251,6 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                         </div>
                       ) : getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "pdf" ? (
                         <iframe title={previewTarget.nombreOriginal} src={previewTarget.publicUrl} style={{ width: "100%", height: 420, border: "none", background: "#fff" }} />
-                      ) : getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "office" ? (
-                        <iframe title={previewTarget.nombreOriginal} src={getAttachmentOpenUrl(previewTarget.nombreOriginal, previewTarget.tipoMime, previewTarget.publicUrl)} style={{ width: "100%", height: 420, border: "none", background: "#fff" }} />
                       ) : (
                         <div style={{ padding: 20, fontSize: 13, color: C.muted }}>Este tipo de archivo no tiene vista previa dentro del panel. Usá “Descargar” o “Abrir en pestaña”.</div>
                       )}
@@ -1447,7 +1465,7 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
                   </button>
                 ) : null}
               </div>
-              <a href={getAttachmentOpenUrl(latestPlano?.nombreOriginal || "", latestPlano?.tipoMime || "", (latestPlano?.publicUrl || draft.planoUrl))} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.sky, fontWeight: 700, textDecoration: "none" }}>{isPreviewableAttachment(latestPlano?.nombreOriginal, latestPlano?.tipoMime) ? "Abrir último" : "Descargar último"}</a>
+              <a href={(latestPlano?.publicUrl || draft.planoUrl)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.sky, fontWeight: 700, textDecoration: "none" }}>{isPreviewableAttachment(latestPlano?.nombreOriginal, latestPlano?.tipoMime) ? "Abrir último" : "Descargar último"}</a>
               <span style={{ fontSize: 11, color: C.dim }}>{planos.length > 1 ? `${planos.length} archivos` : (latestPlano?.nombreOriginal || "1 archivo")}</span>
             </>
           ) : <span style={{ fontSize: 11, color: C.dim }}>Sin archivo</span>}
@@ -1495,6 +1513,7 @@ export default function App() {
   const [activeUser, setActiveUser] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [accessSyncStatus, setAccessSyncStatus] = useState({ kind: "", text: "" });
   const [accessHistory, setAccessHistory] = useState([]);
 
@@ -1649,33 +1668,79 @@ export default function App() {
       return;
     }
 
+    if (selectedUser.id !== "emanuel-aguilar" && !cleanText(loginPassword)) {
+      setLoginError("Ingresá la contraseña para continuar.");
+      return;
+    }
+
     setLoginLoading(true);
     setLoginError("");
     setAccessSyncStatus({ kind: "", text: "" });
 
-    const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
-    let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
-
-    const insertResult = await supabase.from("panel_accesos").insert(entry);
-    if (insertResult.error) {
-      syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
-    }
-
-    const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
-    let nextHistory = [];
     try {
-      const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
-      const current = raw ? JSON.parse(raw) : [];
-      nextHistory = [localEntry, ...current].slice(0, 10);
-      localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
-    } catch {
-      nextHistory = [localEntry];
-    }
+      const usuarioClave = getLoginClaveById(selectedUser.id);
 
-    setAccessHistory(nextHistory);
-    setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
-    setAccessSyncStatus(syncStatus);
-    setLoginLoading(false);
+      const { data: panelUser, error: panelUserError } = await supabase
+        .from("panel_usuarios")
+        .select("id, nombre, usuario_clave, password_hash, password_set_at, rol, area")
+        .eq("usuario_clave", usuarioClave)
+        .maybeSingle();
+
+      if (panelUserError) {
+        throw new Error(panelUserError.message || "No se pudo validar el usuario.");
+      }
+
+      if (!panelUser) {
+        throw new Error("El usuario no existe en la tabla panel_usuarios.");
+      }
+
+      if (selectedUser.id !== "emanuel-aguilar") {
+        const incomingHash = await hashPassword(loginPassword);
+
+        if (!panelUser.password_hash) {
+          const { error: savePasswordError } = await supabase
+            .from("panel_usuarios")
+            .update({
+              password_hash: incomingHash,
+              password_set_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", panelUser.id);
+
+          if (savePasswordError) {
+            throw new Error(savePasswordError.message || "No se pudo registrar la contraseña.");
+          }
+        } else if (panelUser.password_hash !== incomingHash) {
+          throw new Error("Contraseña incorrecta.");
+        }
+      }
+
+      const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
+      const insertResult = await supabase.from("panel_accesos").insert(entry);
+      const syncStatus = insertResult.error
+        ? { kind: "warning", text: "Ingreso registrado localmente." }
+        : { kind: "success", text: "Ingreso registrado correctamente." };
+
+      const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
+      let nextHistory = [];
+      try {
+        const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
+        const current = raw ? JSON.parse(raw) : [];
+        nextHistory = [localEntry, ...current].slice(0, 10);
+        localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
+      } catch {
+        nextHistory = [localEntry];
+      }
+
+      setAccessHistory(nextHistory);
+      setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
+      setAccessSyncStatus(syncStatus);
+      setLoginPassword("");
+    } catch (err) {
+      setLoginError(err.message || "No se pudo iniciar sesión.");
+    } finally {
+      setLoginLoading(false);
+    }
   }
 
   async function addExpediente(form) {
@@ -2270,7 +2335,7 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
+    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} loginPassword={loginPassword} onPasswordChange={setLoginPassword} />;
   }
 
   return (
@@ -2309,7 +2374,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
+              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setLoginPassword(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
@@ -2318,8 +2383,6 @@ export default function App() {
 
           <main style={{ flex: 1, padding: "16px 16px 20px", width: "100%", maxWidth: "none", boxSizing: "border-box", overflowX: "hidden" }}>
             {error ? <div style={{ marginBottom: 16, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{error}</div> : null}
-            {notice ? <div style={{ marginBottom: 16, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{notice}</div> : null}
-            {accessSyncStyle ? <div style={{ ...accessSyncStyle, marginBottom: 16, borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{accessSyncStatus.text}</div> : null}
             {!canEdit ? <div style={{ marginBottom: 16, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>Usuario en modo solo lectura. Este perfil no puede crear, editar, importar ni eliminar expedientes.</div> : null}
 
             {loading ? (
