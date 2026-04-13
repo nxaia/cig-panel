@@ -1099,7 +1099,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 </div>
               ) : null}
 
-              <div style={{ marginTop: 12 }}>
+              <div style={{ marginTop: 12, display: "flex", justifyContent: "center" }}>
                 <button
                   type="submit"
                   disabled={loginLoading || !selectedUserId}
@@ -1108,6 +1108,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                     padding: "11px 24px",
                     fontSize: 15,
                     borderRadius: 12,
+                    minWidth: 220,
                     opacity: loginLoading || !selectedUserId ? 0.7 : 1,
                     cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
                   }}
@@ -1522,7 +1523,7 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
   );
 }
 
-function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlano, onDeletePlano, deletingPlanoId, uploadingPlano, savingField, canEdit, onDelete, planos = [], selected, onToggleSelect }) {
+function ExpedienteRow({ exp, rowIndex = 0, users, usersMap, onSaveField, onOpen, onUploadPlano, onDeletePlano, deletingPlanoId, uploadingPlano, savingField, canEdit, onDelete, planos = [], selected, onToggleSelect }) {
   const [draft, setDraft] = useState(exp);
 
   useEffect(() => {
@@ -1547,7 +1548,7 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
   };
 
   return (
-    <tr style={{ borderBottom: "1px solid #f1f5f9", verticalAlign: "top" }}>
+    <tr style={{ borderBottom: "1px solid #f1f5f9", verticalAlign: "top", background: rowIndex % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
       <td style={{ padding: "8px 6px", width: 32 }}>
         <input type="checkbox" checked={selected} onChange={() => onToggleSelect(exp.id)} />
       </td>
@@ -2722,7 +2723,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {slice.length === 0 ? <tr><td colSpan={14}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp) => <ExpedienteRow key={exp.id} exp={exp} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} />)}
+                        {slice.length === 0 ? <tr><td colSpan={14}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp, rowIndex) => <ExpedienteRow key={exp.id} exp={exp} rowIndex={rowIndex} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} />)}
                       </tbody>
                     </table>
                   </div>
