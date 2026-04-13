@@ -135,11 +135,12 @@ const BARRIOS = {
 const LOGIN_USERS = [
   { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
   { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
-  { id: "emanuel-aguilar", nombre: "Emanuel Aguilar", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
+  { id: "usuario", nombre: "Usuario", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
 
 const PAGE_SIZE = 5;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
+const ACTIVE_SESSION_KEY = "cig_panel_active_session_v1";
 
 
 const TABLE_COLGROUP = [
@@ -877,35 +878,13 @@ function Doc({ doc }) {
   );
 }
 
-function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError }) {
-  useEffect(() => {
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousBodyMargin = document.body.style.margin;
-    const previousBodyWidth = document.body.style.width;
-    const previousBodyHeight = document.body.style.height;
-
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-    document.body.style.margin = "0";
-    document.body.style.width = "100vw";
-    document.body.style.height = "100vh";
-
-    return () => {
-      document.documentElement.style.overflow = previousHtmlOverflow;
-      document.body.style.overflow = previousBodyOverflow;
-      document.body.style.margin = previousBodyMargin;
-      document.body.style.width = previousBodyWidth;
-      document.body.style.height = previousBodyHeight;
-    };
-  }, []);
-
+function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange }) {
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        width: "100vw",
+        width: "100%",
         height: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
@@ -918,7 +897,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
     >
       <div
         style={{
-          width: "min(100%, 760px)",
+          width: "100%",
           maxWidth: 760,
           background: "#fff",
           borderRadius: 28,
@@ -983,7 +962,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ fontSize: 21, color: C.slate, fontWeight: 800, marginTop: 4 }}>Regularización Dominial y Hábitat</div>
 
           <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>
-            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado para continuar.
+            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
           </div>
 
           <div style={{ maxWidth: 480, margin: "20px auto 0", display: "grid", gap: 12 }}>
@@ -1028,6 +1007,23 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
             })}
           </div>
 
+          <div style={{ maxWidth: 480, margin: "14px auto 0", textAlign: "left" }}>
+            <div style={labelStyle}>Contraseña</div>
+            <input
+              type="password"
+              value={loginPassword}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !loginLoading && selectedUserId && loginPassword.trim()) onIngresar();
+              }}
+              placeholder="Ingresá la contraseña"
+              style={{ ...inputStyle, background: "#fff" }}
+            />
+            <div style={{ marginTop: 8, fontSize: 12, color: C.dim }}>
+              Si es la primera vez para ese usuario, la contraseña que cargues quedará registrada.
+            </div>
+          </div>
+
           {loginError ? (
             <div
               style={{
@@ -1048,14 +1044,14 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ marginTop: 18 }}>
             <button
               onClick={onIngresar}
-              disabled={loginLoading || !selectedUserId}
+              disabled={loginLoading || !selectedUserId || !loginPassword.trim()}
               style={{
                 ...btnPrimary,
                 padding: "13px 28px",
                 fontSize: 15,
                 borderRadius: 12,
-                opacity: loginLoading || !selectedUserId ? 0.7 : 1,
-                cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
+                opacity: loginLoading || !selectedUserId || !loginPassword.trim() ? 0.7 : 1,
+                cursor: loginLoading || !selectedUserId || !loginPassword.trim() ? "not-allowed" : "pointer",
               }}
             >
               {loginLoading ? "Ingresando..." : "Ingresar al panel"}
@@ -1503,6 +1499,7 @@ export default function App() {
   const [hiddenDuplicateCount, setHiddenDuplicateCount] = useState(0);
 
   const [selectedLoginUserId, setSelectedLoginUserId] = useState(LOGIN_USERS[0].id);
+  const [loginPassword, setLoginPassword] = useState("");
   const [activeUser, setActiveUser] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -1543,6 +1540,37 @@ export default function App() {
       setAccessHistory([]);
     }
   }, []);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(ACTIVE_SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.id) return;
+      const matched = LOGIN_USERS.find((item) => item.id === parsed.id);
+      if (!matched) return;
+      setActiveUser({ ...matched, ...parsed });
+      setSelectedLoginUserId(parsed.id);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 3000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(""), 4000);
+    return () => clearTimeout(timer);
+  }, [error]);
+
+  useEffect(() => {
+    if (!accessSyncStatus.text) return;
+    const timer = setTimeout(() => setAccessSyncStatus({ kind: "", text: "" }), 3000);
+    return () => clearTimeout(timer);
+  }, [accessSyncStatus]);
+
 
   useEffect(() => {
     if (activeUser) loadInitialData();
@@ -1655,6 +1683,10 @@ export default function App() {
       setLoginError("Seleccioná un usuario habilitado para ingresar.");
       return;
     }
+    if (!loginPassword.trim()) {
+      setLoginError("Ingresá la contraseña.");
+      return;
+    }
     if (!supabase) {
       setLoginError("Faltan las variables de entorno de Supabase.");
       return;
@@ -1663,6 +1695,49 @@ export default function App() {
     setLoginLoading(true);
     setLoginError("");
     setAccessSyncStatus({ kind: "", text: "" });
+
+    const { data: panelUser, error: panelUserError } = await supabase
+      .from("panel_usuarios")
+      .select("*")
+      .eq("nombre", selectedUser.nombre)
+      .limit(1)
+      .maybeSingle();
+
+    if (panelUserError) {
+      setLoginError(`No se pudo validar el usuario: ${panelUserError.message}`);
+      setLoginLoading(false);
+      return;
+    }
+
+    if (!panelUser) {
+      setLoginError("El usuario no existe en la tabla panel_usuarios.");
+      setLoginLoading(false);
+      return;
+    }
+
+    const currentPassword = cleanText(panelUser.password_hash || "");
+    const incomingPassword = cleanText(loginPassword);
+
+    if (!currentPassword) {
+      const { error: savePasswordError } = await supabase
+        .from("panel_usuarios")
+        .update({
+          password_hash: incomingPassword,
+          password_set_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", panelUser.id);
+
+      if (savePasswordError) {
+        setLoginError(`No se pudo registrar la contraseña inicial: ${savePasswordError.message}`);
+        setLoginLoading(false);
+        return;
+      }
+    } else if (currentPassword !== incomingPassword) {
+      setLoginError("La contraseña no coincide con la registrada para este usuario.");
+      setLoginLoading(false);
+      return;
+    }
 
     const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
     let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
@@ -1683,9 +1758,25 @@ export default function App() {
       nextHistory = [localEntry];
     }
 
+    const sessionPayload = {
+      id: selectedUser.id,
+      nombre: selectedUser.nombre,
+      rol: selectedUser.rol,
+      area: panelUser.area || selectedUser.area,
+      tecnico: panelUser.tecnico ?? selectedUser.tecnico,
+      canEdit: panelUser.can_edit ?? selectedUser.canEdit,
+      panelUserId: panelUser.id,
+      lastLoginAt: entry.fecha_ingreso,
+    };
+
+    try {
+      localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(sessionPayload));
+    } catch {}
+
     setAccessHistory(nextHistory);
-    setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
+    setActiveUser(sessionPayload);
     setAccessSyncStatus(syncStatus);
+    setLoginPassword("");
     setLoginLoading(false);
   }
 
@@ -2281,7 +2372,17 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
+    return (
+      <LoginScreen
+        selectedUserId={selectedLoginUserId}
+        onSelectUser={setSelectedLoginUserId}
+        onIngresar={handleLogin}
+        loginLoading={loginLoading}
+        loginError={loginError}
+        loginPassword={loginPassword}
+        onPasswordChange={setLoginPassword}
+      />
+    );
   }
 
   return (
@@ -2320,7 +2421,16 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
+              <button onClick={() => {
+                try { localStorage.removeItem(ACTIVE_SESSION_KEY); } catch {}
+                setActiveUser(null);
+                setSelectedLoginUserId(LOGIN_USERS[0].id);
+                setLoginPassword("");
+                setActiveNav("Dashboard");
+                setLoginError("");
+                setNotice("");
+                setAccessSyncStatus({ kind: "", text: "" });
+              }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
