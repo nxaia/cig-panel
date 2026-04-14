@@ -1,7 +1,7 @@
 
 /* Zebra rows */
 tbody tr:nth-child(even) {
-  background-color: #f5f7fa;
+  background-color: #e5e7eb;
 }
 tbody tr:nth-child(odd) {
   background-color: #ffffff;
@@ -25,7 +25,7 @@ const ALLOWED_PLANO_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", 
 const ALLOWED_PLANO_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "xls", "xlsx", "csv"];
 
 const C = {
-  bg: "#f5f7fa",
+  bg: "#e5e7eb",
   card: "#ffffff",
   border: "#e2e8f0",
   text: "#1e293b",
@@ -918,7 +918,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
     <div
       style={{
         height: "100vh",
-        background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
+        background: "linear-gradient(180deg,#edf5fb 0%, #e5e7eb 100%)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
