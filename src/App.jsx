@@ -1535,6 +1535,7 @@ function ExpedienteRow({ exp, rowIndex = 0, users, usersMap, onSaveField, onOpen
   const saving = savingField === String(draft.id);
   const barrios = BARRIOS[zona.localidad || "Banda del Río Salí"] || ALL_BARRIOS;
   const latestPlano = planos[0] || null;
+  const rowBg = rowIndex % 2 === 0 ? "#ffffff" : "#dfe5ec";
 
   const updateField = (field, value) => {
     const next = { ...draft, [field]: value };
@@ -1550,27 +1551,27 @@ function ExpedienteRow({ exp, rowIndex = 0, users, usersMap, onSaveField, onOpen
 
   return (
     <tr style={{ borderBottom: "1px solid #f1f5f9", verticalAlign: "top", background: rowIndex % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
-      <td style={{ padding: "8px 6px", width: 32 }}>
+      <td style={{ background: rowBg, padding: "8px 6px", width: 32 }}>
         <input type="checkbox" checked={selected} onChange={() => onToggleSelect(exp.id)} />
       </td>
-      <td style={{ padding: "8px 6px", width: 118 }}>
+      <td style={{ background: rowBg, padding: "8px 6px", width: 118 }}>
         <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800 }}>{draft.num}</span>
         <div style={{ color: C.dim, fontSize: 11, marginTop: 6 }}>{draft.origenCarga}</div>
         <div style={{ marginTop: 8 }}><CompletenessBadge expediente={draft} attachments={planos} /></div>
       </td>
-      <td style={{ padding: "6px 5px", width: 220 }}><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "6px 5px", width: 100 }}><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "6px 5px", width: 118 }}><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "6px 5px", width: 120 }}><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={compactInputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></td>
-      <td style={{ padding: "6px 5px", width: 190 }}>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 220 }}><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={compactInputStyle} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 100 }}><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={compactInputStyle} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 118 }}><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={compactInputStyle} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 120 }}><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={compactInputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 190 }}>
         <select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={{ ...compactInputStyle, marginBottom: 8 }}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
         <select value={zona.barrio || ""} disabled={!canEdit} onChange={(e) => updateZona("barrio", e.target.value)} style={compactInputStyle}>
           <option value="">Barrio</option>
           {barrios.map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
       </td>
-      <td style={{ padding: "6px 5px", width: 98 }}><input value={draft.padronNumero} disabled={!canEdit} onChange={(e) => updateField("padronNumero", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "6px 5px", width: 145 }}>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 98 }}><input value={draft.padronNumero} disabled={!canEdit} onChange={(e) => updateField("padronNumero", e.target.value)} style={compactInputStyle} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 145 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {canEdit ? (
             <label style={{ ...btnGhost, textAlign: "center", padding: "8px 10px", fontSize: 11, color: uploadingPlano ? C.dim : C.text, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
@@ -1617,11 +1618,11 @@ function ExpedienteRow({ exp, rowIndex = 0, users, usersMap, onSaveField, onOpen
           ) : <span style={{ fontSize: 11, color: C.dim }}>Sin archivo</span>}
         </div>
       </td>
-      <td style={{ padding: "6px 5px", width: 112 }}><select value={draft.estado} disabled={!canEdit} onChange={(e) => updateField("estado", e.target.value)} style={getEstadoSelectStyle(draft.estado)}>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></td>
-      <td style={{ padding: "6px 5px", width: 110 }}><select value={draft.area} disabled={!canEdit} onChange={(e) => updateField("area", e.target.value)} style={compactInputStyle}>{AREAS.filter(Boolean).map((a) => <option key={a} value={a}>{a}</option>)}</select></td>
-      <td style={{ padding: "6px 5px", width: 126 }}><select value={draft.resp} disabled={!canEdit} onChange={(e) => updateField("resp", e.target.value)} style={compactInputStyle}><option value="">Responsable</option>{users.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}</select></td>
-      <td style={{ padding: "6px 5px", width: 210 }}><textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={2} style={{ ...compactInputStyle, resize: "vertical", minHeight: 44 }} /></td>
-      <td style={{ padding: "6px 5px", width: 98 }}>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 112 }}><select value={draft.estado} disabled={!canEdit} onChange={(e) => updateField("estado", e.target.value)} style={getEstadoSelectStyle(draft.estado)}>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 110 }}><select value={draft.area} disabled={!canEdit} onChange={(e) => updateField("area", e.target.value)} style={compactInputStyle}>{AREAS.filter(Boolean).map((a) => <option key={a} value={a}>{a}</option>)}</select></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 126 }}><select value={draft.resp} disabled={!canEdit} onChange={(e) => updateField("resp", e.target.value)} style={compactInputStyle}><option value="">Responsable</option>{users.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}</select></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 210 }}><textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={2} style={{ ...compactInputStyle, resize: "vertical", minHeight: 44 }} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 98 }}>
         <div style={{ display: "grid", gap: 8 }}>
           <button onClick={() => onOpen(draft)} style={{ ...btnPrimary, padding: "6px 10px", fontSize: 11 }}>Ver</button>
           {canEdit ? <button onClick={() => onDelete(draft)} style={{ ...btnGhost, padding: "6px 10px", fontSize: 11, color: C.red, borderColor: "#fecaca" }}>Eliminar</button> : null}
