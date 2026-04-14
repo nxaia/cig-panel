@@ -913,15 +913,15 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 10,
+        padding: 8,
         boxSizing: "border-box",
-        overflow: "hidden",
+        overflowY: "auto",
       }}
     >
       <div
         style={{
           width: "100%",
-          maxWidth: 740,
+          maxWidth: 700,
           background: "#fff",
           borderRadius: 28,
           overflow: "hidden",
@@ -931,11 +931,11 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
         }}
       >
         <div style={{ height: 8, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
-        <div style={{ padding: "12px 24px 14px", textAlign: "center" }}>
+        <div style={{ padding: "8px 20px 10px", textAlign: "center" }}>
           <div
             style={{
-              width: 92,
-              height: 92,
+              width: 78,
+              height: 78,
               margin: "0 auto 10px",
               borderRadius: 22,
               background: "#fff",
@@ -946,17 +946,17 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
               justifyContent: "center",
             }}
           >
-            <img src="/logo-icono.png" alt="Municipio" style={{ width: 70, height: 70, objectFit: "contain" }} />
+            <img src="/logo-icono.png" alt="Municipio" style={{ width: 58, height: 58, objectFit: "contain" }} />
           </div>
 
           <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>MUNICIPALIDAD DE</div>
-          <div style={{ fontSize: 22, color: C.slate, fontWeight: 800, marginTop: 4 }}>Banda del Río Salí</div>
-          <div style={{ width: 92, height: 4, borderRadius: 999, background: "#14b8a6", margin: "10px auto" }} />
+          <div style={{ fontSize: 18, color: C.slate, fontWeight: 800, marginTop: 4 }}>Banda del Río Salí</div>
+          <div style={{ width: 82, height: 4, borderRadius: 999, background: "#14b8a6", margin: "8px auto" }} />
 
           <div
             style={{
-              width: 92,
-              height: 92,
+              width: 78,
+              height: 78,
               margin: "0 auto",
               borderRadius: 22,
               background: "#fff",
@@ -971,8 +971,8 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
               src={logoArea}
               alt="Logo del área"
               style={{
-                width: 82,
-                height: 82,
+                width: 68,
+                height: 68,
                 objectFit: "contain",
                 display: "block",
                 background: "#fff",
@@ -982,13 +982,13 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           </div>
 
           <div style={{ marginTop: 8, fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>DIRECCIÓN DE</div>
-          <div style={{ fontSize: 18, color: C.slate, fontWeight: 800, marginTop: 3 }}>Regularización Dominial y Hábitat</div>
+          <div style={{ fontSize: 16, color: C.slate, fontWeight: 800, marginTop: 2 }}>Regularización Dominial y Hábitat</div>
 
-          <div style={{ maxWidth: 520, margin: "10px auto 0", color: C.muted, fontSize: 12, lineHeight: 1.35 }}>
+          <div style={{ maxWidth: 520, margin: "8px auto 0", color: C.muted, fontSize: 11, lineHeight: 1.25 }}>
             Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
           </div>
 
-          <div style={{ maxWidth: 480, margin: "14px auto 0", display: "grid", gap: 10 }}>
+          <div style={{ maxWidth: 480, margin: "8px auto 0", display: "grid", gap: 8 }}>
             {LOGIN_USERS.map((user) => {
               const active = selectedUserId === user.id;
               const subtitle = getUserSubtitle(user);
@@ -998,7 +998,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   onClick={() => onSelectUser(user.id)}
                   style={{
                     textAlign: "left",
-                    padding: "12px 16px",
+                    padding: "9px 14px",
                     borderRadius: 16,
                     border: `1px solid ${active ? "#7dd3fc" : C.border}`,
                     background: active ? "#f0f9ff" : "#fff",
@@ -1010,16 +1010,16 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: 15, color: C.slate, fontWeight: 700 }}>{user.nombre}</div>
+                    <div style={{ fontSize: 13, color: C.slate, fontWeight: 700 }}>{user.nombre}</div>
                     {subtitle ? (
-                      <div style={{ marginTop: 4, fontSize: 12, color: C.muted }}>{subtitle}</div>
+                      <div style={{ marginTop: 2, fontSize: 11, color: C.muted }}>{subtitle}</div>
                     ) : null}
                   </div>
                   <div
                     style={{
-                      minWidth: 24,
-                      width: 24,
-                      height: 24,
+                      minWidth: 20,
+                      width: 20,
+                      height: 20,
                       borderRadius: "50%",
                       border: `2px solid ${active ? C.sky : "#cbd5e1"}`,
                       background: active ? C.sky : "#fff",
@@ -1031,7 +1031,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
             })}
           </div>
 
-          <div style={{ maxWidth: 480, margin: "12px auto 0", textAlign: "left" }}>
+          <div style={{ maxWidth: 480, margin: "8px auto 0", textAlign: "left" }}>
             <div style={{ ...labelStyle, marginBottom: 5 }}>Contraseña</div>
             <form
               onSubmit={(e) => {
@@ -1045,7 +1045,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   value={loginPassword}
                   onChange={(e) => onPasswordChange(e.target.value)}
                   placeholder="Ingresá la contraseña"
-                  style={{ ...inputStyle, background: "#fff", paddingRight: 44, paddingTop: 9, paddingBottom: 9 }}
+                  style={{ ...inputStyle, background: "#fff", paddingRight: 38, paddingTop: 8, paddingBottom: 8 }}
                 />
                 <button
                   type="button"
@@ -1068,16 +1068,16 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   {showPassword ? "🙈" : "👁"}
                 </button>
               </div>
-              <div style={{ marginTop: 6, fontSize: 11, color: C.dim, lineHeight: 1.3 }}>
+              <div style={{ marginTop: 4, fontSize: 10, color: C.dim, lineHeight: 1.2 }}>
                 Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Usuario entra solo en modo consulta.
               </div>
 
               {selectedNeedsPassword ? (
-                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-                  <button type="button" onClick={onOpenChangePassword} style={{ ...btnGhost, padding: "7px 12px", fontSize: 12 }}>
+                <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                  <button type="button" onClick={onOpenChangePassword} style={{ ...btnGhost, padding: "6px 10px", fontSize: 11 }}>
                     Cambiar contraseña
                   </button>
-                  <button type="button" onClick={onOpenManualReset} style={{ ...btnGhost, padding: "7px 12px", fontSize: 12 }}>
+                  <button type="button" onClick={onOpenManualReset} style={{ ...btnGhost, padding: "6px 10px", fontSize: 11 }}>
                     Reset manual admin
                   </button>
                 </div>
@@ -1087,12 +1087,12 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 <div
                   style={{
                     maxWidth: 480,
-                    margin: "10px auto 0",
+                    margin: "8px auto 0",
                     background: "#fef2f2",
                     color: "#991b1b",
                     border: "1px solid #fecaca",
                     borderRadius: 12,
-                    padding: "10px 12px",
+                    padding: "8px 10px",
                     fontSize: 12,
                   }}
                 >
@@ -1100,16 +1100,16 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 </div>
               ) : null}
 
-              <div style={{ marginTop: 12, display: "flex", justifyContent: "center" }}>
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
                 <button
                   type="submit"
                   disabled={loginLoading || !selectedUserId}
                   style={{
                     ...btnPrimary,
-                    padding: "11px 24px",
-                    fontSize: 15,
+                    padding: "10px 22px",
+                    fontSize: 14,
                     borderRadius: 12,
-                    minWidth: 220,
+                    minWidth: 200,
                     opacity: loginLoading || !selectedUserId ? 0.7 : 1,
                     cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
                   }}
@@ -1208,8 +1208,8 @@ function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, on
             <button type="button" onClick={() => setShowConfirm((v) => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: C.muted, fontSize: 18, padding: 0 }}>{showConfirm ? "🙈" : "👁"}</button>
           </div>
 
-          {localError ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px", fontSize: 13 }}>{localError}</div> : null}
-          {error ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px", fontSize: 13 }}>{error}</div> : null}
+          {localError ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 10px", fontSize: 13 }}>{localError}</div> : null}
+          {error ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 10px", fontSize: 13 }}>{error}</div> : null}
         </div>
         <div style={{ padding: "0 20px 20px", display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <button onClick={onClose} style={btnGhost} disabled={loading}>Cancelar</button>
@@ -1354,7 +1354,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                     {modalFiles.map((plano) => {
                       const activePreview = String(previewTarget?.id || "") === String(plano.id);
                       return (
-                        <div key={plano.id} style={{ background: activePreview ? "#eff6ff" : "#f8fafc", border: `1px solid ${activePreview ? "#93c5fd" : C.border}`, borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                        <div key={plano.id} style={{ background: activePreview ? "#eff6ff" : "#f8fafc", border: `1px solid ${activePreview ? "#93c5fd" : C.border}`, borderRadius: 12, padding: "8px 10px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                           <div>
                             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                               <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>{plano.nombreOriginal || "Archivo"}</div>
@@ -1387,7 +1387,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
 
                   {previewTarget ? (
                     <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, background: "#fff", overflow: "hidden" }}>
-                      <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ padding: "8px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                         <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>Vista previa: {previewTarget.nombreOriginal}</div>
                         <a href={previewTarget.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir en pestaña</a>
                       </div>
