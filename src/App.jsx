@@ -1,3 +1,12 @@
+
+/* Zebra rows */
+tbody tr:nth-child(even) {
+  background-color: #f5f7fa;
+}
+tbody tr:nth-child(odd) {
+  background-color: #ffffff;
+}
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import logoArea from "./assets/logo-area-clean.png";
