@@ -51,6 +51,11 @@ const PRIORIDADES = {
 const AREAS = ["", "Catastro", "Obras", "Legales", "Escribanía", "Topografía", "Dirección", "Mesa de Entradas"];
 const LOCALIDADES = ["Banda del Río Salí", "Lastenia"];
 const ESTADOS_CIVILES = ["", "Soltero/a", "Casado/a", "Divorciado/a", "Viudo/a", "Unión convivencial", "Otro"];
+const RESPONSABLES = [
+  { id: "carlos-chauvet", nombre: "Carlos Chauvet" },
+  { id: "emmanuel-aguilar", nombre: "Emmanuel Aguilar" },
+  { id: "andres-ferrer", nombre: "Andrés Ferrer" },
+];
 
 const ALL_BARRIOS = [
   "Barrio 140 Viviendas",
@@ -149,6 +154,7 @@ const TABLE_COLGROUP = [
   { key: "titular", width: "190px" },
   { key: "dni", width: "92px" },
   { key: "contacto", width: "108px" },
+  { key: "direccion", width: "170px" },
   { key: "estadoCivil", width: "120px" },
   { key: "barrio", width: "170px" },
   { key: "padron", width: "100px" },
@@ -535,6 +541,7 @@ function normalizeExpediente(row) {
     titular: normalizeTitular(row.titular),
     dni: row.dni || "",
     telefono: normalizePhone(row.telefono),
+    direccion: row.direccion || "",
     barrio: row.barrio || "",
     estadoCivil: row.estado_civil || "",
     padronNumero: row.padron_numero || "",
@@ -560,6 +567,8 @@ function buildUpdatePayload(partial) {
   if (Object.prototype.hasOwnProperty.call(partial, "titular")) payload.titular = normalizeTitular(partial.titular);
   if (Object.prototype.hasOwnProperty.call(partial, "dni")) payload.dni = cleanText(partial.dni);
   if (Object.prototype.hasOwnProperty.call(partial, "telefono")) payload.telefono = normalizePhone(partial.telefono);
+  if (Object.prototype.hasOwnProperty.call(partial, "num")) payload.numero_expediente = cleanText(partial.num);
+  if (Object.prototype.hasOwnProperty.call(partial, "direccion")) payload.direccion = cleanText(partial.direccion);
   if (Object.prototype.hasOwnProperty.call(partial, "barrio")) payload.barrio = partial.barrio;
   if (Object.prototype.hasOwnProperty.call(partial, "estadoCivil")) payload.estado_civil = cleanText(partial.estadoCivil);
   if (Object.prototype.hasOwnProperty.call(partial, "padronNumero")) payload.padron_numero = cleanText(partial.padronNumero);
@@ -1284,7 +1293,24 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, color: "#bae6fd", fontWeight: 600, textTransform: "uppercase" }}>Expediente</div>
-              <div style={{ fontSize: 22, fontWeight: 700, marginTop: 3 }}>{draft.num}</div>
+              {canEdit ? (
+                <input
+                  value={draft.num}
+                  onChange={(e) => updateField("num", e.target.value)}
+                  style={{
+                    marginTop: 3,
+                    fontSize: 22,
+                    fontWeight: 700,
+                    color: "#fff",
+                    background: "transparent",
+                    border: "1px solid rgba(255,255,255,0.35)",
+                    borderRadius: 8,
+                    padding: "4px 8px",
+                    outline: "none",
+                    minWidth: 220,
+                  }}
+                />
+              ) : <div style={{ fontSize: 22, fontWeight: 700, marginTop: 3 }}>{draft.num}</div>}
               {modalTotal > 0 ? <div style={{ fontSize: 12, color: "#e0f2fe", marginTop: 4 }}>Expediente {modalIndex + 1} de {modalTotal}</div> : null}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1314,6 +1340,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
             <div><div style={labelStyle}>Titular</div><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>DNI</div><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>Contacto</div><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={inputStyle} /></div>
+            <div><div style={labelStyle}>Dirección</div><input value={draft.direccion || ""} disabled={!canEdit} onChange={(e) => updateField("direccion", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>Estado civil</div><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={inputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></div>
             <div><div style={labelStyle}>Localidad</div><select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={inputStyle}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select></div>
             <div><div style={labelStyle}>Barrio</div><select value={zona.barrio || ""} disabled={!canEdit} onChange={(e) => updateZona("barrio", e.target.value)} style={inputStyle}><option value="">Seleccionar</option>{barrios.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
@@ -1427,6 +1454,7 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
     titular: "",
     dni: "",
     telefono: "",
+    direccion: "",
     localidad: "Banda del Río Salí",
     barrioSeleccionado: "",
     barrioManual: "",
@@ -1445,6 +1473,7 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
         titular: "",
         dni: "",
         telefono: "",
+        direccion: "",
         localidad: "Banda del Río Salí",
         barrioSeleccionado: "",
         barrioManual: "",
@@ -1479,6 +1508,7 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
       titular: form.titular,
       dni: form.dni,
       telefono: form.telefono,
+      direccion: form.direccion,
       localidad: form.localidad,
       barrio: barrioFinal,
       estadoCivil: form.estadoCivil,
@@ -1502,6 +1532,7 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
           <input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nombre del titular" style={inputStyle} />
           <input value={form.dni} onChange={(e) => set("dni", e.target.value)} placeholder="DNI" style={inputStyle} />
           <input value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="Contacto / teléfono" style={inputStyle} />
+          <input value={form.direccion} onChange={(e) => set("direccion", e.target.value)} placeholder="Dirección" style={inputStyle} />
           <select value={form.estadoCivil} onChange={(e) => set("estadoCivil", e.target.value)} style={inputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Estado civil"}</option>)}</select>
           <input value={form.padronNumero} onChange={(e) => set("padronNumero", e.target.value)} placeholder="N° de padrón" style={inputStyle} />
           <select value={form.localidad} onChange={(e) => { set("localidad", e.target.value); set("barrioSeleccionado", ""); set("barrioManual", ""); }} style={inputStyle}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
@@ -1563,6 +1594,7 @@ function ExpedienteRow({ exp, rowIndex = 0, users, usersMap, onSaveField, onOpen
       <td style={{ background: rowBg, padding: "6px 5px", width: 220 }}><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
       <td style={{ background: rowBg, padding: "6px 5px", width: 100 }}><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
       <td style={{ background: rowBg, padding: "6px 5px", width: 118 }}><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 170 }}><input value={draft.direccion || ""} disabled={!canEdit} onChange={(e) => updateField("direccion", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
       <td style={{ background: rowBg, padding: "6px 5px", width: 120 }}><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></td>
       <td style={{ background: rowBg, padding: "6px 5px", width: 190 }}>
         <select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg, marginBottom: 8 }}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
@@ -1684,7 +1716,8 @@ export default function App() {
   const [bulkResponsable, setBulkResponsable] = useState("");
 
   const fechaActual = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
-  const usersMap = useMemo(() => buildUsersMap(users), [users]);
+  const responsables = useMemo(() => RESPONSABLES, []);
+  const usersMap = useMemo(() => buildUsersMap(responsables), [responsables]);
   const canEdit = Boolean(activeUser?.canEdit);
   const barrioFilterOptions = useMemo(() => buildBarrioFilterOptions(), []);
 
@@ -1968,6 +2001,7 @@ export default function App() {
       titular: normalizeTitular(form.titular),
       dni: cleanText(form.dni),
       telefono: normalizePhone(form.telefono),
+      direccion: cleanText(form.direccion),
       barrio: composeBarrio(form.localidad, form.barrio),
       estado_civil: cleanText(form.estadoCivil),
       padron_numero: cleanText(form.padronNumero),
@@ -2722,7 +2756,7 @@ export default function App() {
                         <button onClick={applyBulkEstado} style={{ ...btnGhost, padding: "8px 10px" }}>Aplicar estado</button>
                         <select value={bulkResponsable} onChange={(e) => setBulkResponsable(e.target.value)} style={{ ...compactInputStyle, width: 210 }}>
                           <option value="">Asignar responsable masivo</option>
-                          {users.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}
+                          {responsables.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}
                         </select>
                         <button onClick={applyBulkResponsable} style={{ ...btnGhost, padding: "8px 10px" }}>Aplicar responsable</button>
                       </div>
@@ -2736,11 +2770,11 @@ export default function App() {
                       </colgroup>
                       <thead>
                         <tr style={{ borderBottom: "1px solid #f1f5f9", background: "#fafafa", position: "sticky", top: 0, zIndex: 2 }}>
-                          {["✓", "N° Expediente", "Titular", "DNI", "Contacto", "Estado civil", "Barrio", "N° de padrón", "Archivos", "Estado", "Área", "Responsable", "Notas", "Acciones"].map((h) => <th key={h} style={{ padding: "7px 6px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: ".05em", background: "#fafafa", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h}</th>)}
+                          {["✓", "N° Expediente", "Titular", "DNI", "Contacto", "Dirección", "Estado civil", "Barrio", "N° de padrón", "Archivos", "Estado", "Área", "Responsable", "Notas", "Acciones"].map((h) => <th key={h} style={{ padding: "7px 6px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: ".05em", background: "#fafafa", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h}</th>)}
                         </tr>
                       </thead>
                       <tbody>
-                        {slice.length === 0 ? <tr><td colSpan={14}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp, rowIndex) => <ExpedienteRow key={exp.id} exp={exp} rowIndex={rowIndex} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} />)}
+                        {slice.length === 0 ? <tr><td colSpan={15}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp, rowIndex) => <ExpedienteRow key={exp.id} exp={exp} rowIndex={rowIndex} users={responsables} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} />)}
                       </tbody>
                     </table>
                   </div>
@@ -2779,9 +2813,9 @@ export default function App() {
         </div>
       </div>
 
-      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} />
+      <ModalExpediente item={modalItem} users={responsables} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} />
       <PasswordAdminModal open={passwordModalOpen} mode={passwordModalMode} selectedUserId={passwordModalMode === "change" ? (activeUser?.id || selectedLoginUserId) : selectedLoginUserId} onClose={() => { setPasswordModalOpen(false); setPasswordModalError(""); }} onSubmit={handlePasswordAction} loading={passwordModalLoading} error={passwordModalError} />
-      <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} />
+      <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={responsables} />
     </div>
   );
 }
