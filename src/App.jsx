@@ -146,6 +146,7 @@ const LOGIN_USERS = [
 const MIN_PAGE_SIZE = 5;
 const MAX_PAGE_SIZE = 14;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
+const PASSWORD_HASH_CACHE_KEY = "cig_panel_password_hash_cache_v1";
 
 
 const TABLE_COLGROUP = [
@@ -309,6 +310,31 @@ function getLoginClaveById(userId) {
   if (userId === "carlos-chauvet") return "carlos";
   if (userId === "usuario") return "usuario";
   return "";
+}
+
+function readPasswordHashCache() {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(PASSWORD_HASH_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getCachedPasswordHash(userId) {
+  const cache = readPasswordHashCache();
+  return cleanText(cache?.[userId]);
+}
+
+function setCachedPasswordHash(userId, passwordHash) {
+  if (typeof window === "undefined" || !userId) return;
+  try {
+    const cache = readPasswordHashCache();
+    cache[userId] = cleanText(passwordHash);
+    window.localStorage.setItem(PASSWORD_HASH_CACHE_KEY, JSON.stringify(cache));
+  } catch {}
 }
 
 function normalizeTitular(value) {
@@ -1901,8 +1927,11 @@ export default function App() {
 
       if (selectedNeedsPassword) {
         const incomingHash = await hashPassword(loginPassword);
+        const dbHash = cleanText(panelUser.password_hash);
+        const cachedHash = getCachedPasswordHash(selectedUser.id);
+        const effectiveHash = dbHash || cachedHash;
 
-        if (!panelUser.password_hash) {
+        if (!effectiveHash) {
           const { error: bootstrapPasswordError } = await supabase
             .from("panel_usuarios")
             .update({
@@ -1915,8 +1944,16 @@ export default function App() {
           if (bootstrapPasswordError) {
             throw new Error(bootstrapPasswordError.message || "No se pudo registrar la contraseña inicial.");
           }
-        } else if (panelUser.password_hash !== incomingHash) {
-          throw new Error("Contraseña incorrecta.");
+
+          setCachedPasswordHash(selectedUser.id, incomingHash);
+        } else {
+          if (effectiveHash !== incomingHash) {
+            throw new Error("Contraseña incorrecta.");
+          }
+
+          if (dbHash && dbHash !== cachedHash) {
+            setCachedPasswordHash(selectedUser.id, dbHash);
+          }
         }
       }
 
@@ -1974,9 +2011,13 @@ export default function App() {
       if (panelUserError) throw new Error(panelUserError.message || "No se pudo validar el usuario.");
       if (!panelUser) throw new Error("El usuario no existe en la tabla panel_usuarios.");
 
-      if (passwordModalMode === "change") {
+      const dbHash = cleanText(panelUser.password_hash);
+      const cachedHash = getCachedPasswordHash(targetUserId);
+      const effectiveHash = dbHash || cachedHash;
+
+      if (passwordModalMode === "change" && effectiveHash) {
         const currentHash = await hashPassword(currentPassword);
-        if (panelUser.password_hash && panelUser.password_hash !== currentHash) {
+        if (effectiveHash !== currentHash) {
           throw new Error("La contraseña actual es incorrecta.");
         }
       }
@@ -1993,6 +2034,7 @@ export default function App() {
 
       if (updateError) throw new Error(updateError.message || "No se pudo guardar la contraseña.");
 
+      setCachedPasswordHash(targetUserId, nextHash);
       setPasswordModalOpen(false);
       setNotice(passwordModalMode === "change" ? "Contraseña actualizada correctamente." : `Contraseña reseteada para ${targetUser.nombre}.`);
     } catch (err) {
