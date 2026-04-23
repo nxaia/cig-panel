@@ -140,7 +140,6 @@ const BARRIOS = {
 const LOGIN_USERS = [
   { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
   { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
-  { id: "emanuel-aguilar", nombre: "Usuario", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
 ];
 
 const MIN_PAGE_SIZE = 5;
@@ -307,7 +306,6 @@ async function hashPassword(value) {
 function getLoginClaveById(userId) {
   if (userId === "estela-palacios") return "estela";
   if (userId === "carlos-chauvet") return "carlos";
-  if (userId === "emanuel-aguilar") return "usuario";
   return "";
 }
 
@@ -906,12 +904,12 @@ function Doc({ doc }) {
 
 function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange, onOpenChangePassword, onOpenManualReset }) {
   const [showPassword, setShowPassword] = useState(false);
-  const selectedNeedsPassword = selectedUserId !== "emanuel-aguilar";
+  const selectedNeedsPassword = true;
 
   const getUserSubtitle = (user) => {
     if (user.id === "estela-palacios") return "Directora";
     if (user.id === "carlos-chauvet") return "Responsable de área técnica";
-    return "";
+    return "Usuario autorizado";
   };
 
   return (
@@ -1861,7 +1859,7 @@ export default function App() {
       return;
     }
 
-    if (selectedUser.id !== "emanuel-aguilar" && !cleanText(loginPassword)) {
+    if (!cleanText(loginPassword)) {
       setLoginError("Ingresá la contraseña para continuar.");
       return;
     }
@@ -1887,25 +1885,14 @@ export default function App() {
         throw new Error("El usuario no existe en la tabla panel_usuarios.");
       }
 
-      if (selectedUser.id !== "emanuel-aguilar") {
-        const incomingHash = await hashPassword(loginPassword);
+      const incomingHash = await hashPassword(loginPassword);
 
-        if (!panelUser.password_hash) {
-          const { error: savePasswordError } = await supabase
-            .from("panel_usuarios")
-            .update({
-              password_hash: incomingHash,
-              password_set_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", panelUser.id);
+      if (!panelUser.password_hash) {
+        throw new Error("Este usuario no tiene contraseña configurada en panel_usuarios. Definila primero desde la base o usando el reseteo manual.");
+      }
 
-          if (savePasswordError) {
-            throw new Error(savePasswordError.message || "No se pudo registrar la contraseña.");
-          }
-        } else if (panelUser.password_hash !== incomingHash) {
-          throw new Error("Contraseña incorrecta.");
-        }
+      if (panelUser.password_hash !== incomingHash) {
+        throw new Error("Contraseña incorrecta.");
       }
 
       const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
@@ -1949,7 +1936,7 @@ export default function App() {
       const usuarioClave = getLoginClaveById(targetUserId);
       const targetUser = LOGIN_USERS.find((u) => u.id === targetUserId);
 
-      if (!usuarioClave || !targetUser || targetUserId === "emanuel-aguilar") {
+      if (!usuarioClave || !targetUser) {
         throw new Error("Solo Estela y Carlos pueden usar esta función.");
       }
 
@@ -1990,6 +1977,36 @@ export default function App() {
     }
   }
 
+
+  async function insertExpedienteWithFallback(payload) {
+    const triedMissingColumns = new Set();
+    let currentPayload = { ...payload };
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const result = await supabase.from("expedientes").insert(currentPayload).select("*").single();
+
+      if (!result.error) return result;
+
+      const message = String(result.error.message || "");
+      const missingColumnMatch = message.match(/Could not find the '([^']+)' column/i);
+
+      if (!missingColumnMatch) {
+        return result;
+      }
+
+      const missingColumn = missingColumnMatch[1];
+      if (!missingColumn || triedMissingColumns.has(missingColumn)) {
+        return result;
+      }
+
+      triedMissingColumns.add(missingColumn);
+      const { [missingColumn]: _removed, ...rest } = currentPayload;
+      currentPayload = rest;
+    }
+
+    return { data: null, error: { message: "No se pudo guardar el expediente por incompatibilidad de columnas." } };
+  }
+
   async function addExpediente(form) {
     if (!supabase || !canEdit) return;
     setSaving(true);
@@ -2005,23 +2022,15 @@ export default function App() {
       barrio: composeBarrio(form.localidad, form.barrio),
       estado_civil: cleanText(form.estadoCivil),
       padron_numero: cleanText(form.padronNumero),
-      plano_url: "",
-      plano_path: "",
       estado: form.estado,
       area_actual: form.area,
       responsable_id: form.resp || null,
-      documentacion: "incompleta",
-      dias_sin_avance: 0,
-      prioridad: "baja",
-      observaciones: "",
       notas: form.notas || "",
       ultima_actualizacion: new Date().toISOString(),
-      origen_carga: "manual",
-      editable_tecnico: true,
       updated_at: new Date().toISOString(),
     };
 
-    const { data: inserted, error: insertError } = await supabase.from("expedientes").insert(payload).select("*").single();
+    const { data: inserted, error: insertError } = await insertExpedienteWithFallback(payload);
     if (insertError) {
       setError(`No se pudo guardar el expediente: ${insertError.message}`);
       setSaving(false);
@@ -2631,7 +2640,7 @@ export default function App() {
               <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setLoginPassword(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
-              {activeUser?.id !== "emanuel-aguilar" ? <button onClick={() => { setPasswordModalMode("change"); setPasswordModalError(""); setPasswordModalOpen(true); }} style={btnGhost}>Cambiar contraseña</button> : null}
+              {activeUser ? <button onClick={() => { setPasswordModalMode("change"); setPasswordModalError(""); setPasswordModalOpen(true); }} style={btnGhost}>Cambiar contraseña</button> : null}
               {canEdit ? <button onClick={() => { setPasswordModalMode("reset"); setPasswordModalError(""); setPasswordModalOpen(true); }} style={btnGhost}>Reset manual admin</button> : null}
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
             </div>
