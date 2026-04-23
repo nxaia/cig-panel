@@ -319,6 +319,15 @@ function normalizePhone(value) {
   return cleanText(value).replace(/\s+/g, "");
 }
 
+function isUuidLike(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cleanText(value));
+}
+
+function sanitizeResponsableId(value) {
+  const normalized = cleanText(value);
+  return isUuidLike(normalized) ? normalized : null;
+}
+
 function stripAccents(value) {
   return cleanText(value)
     .normalize("NFD")
@@ -576,7 +585,7 @@ function buildUpdatePayload(partial) {
   if (Object.prototype.hasOwnProperty.call(partial, "planoPath")) payload.plano_path = cleanText(partial.planoPath);
   if (Object.prototype.hasOwnProperty.call(partial, "estado")) payload.estado = partial.estado;
   if (Object.prototype.hasOwnProperty.call(partial, "area")) payload.area_actual = partial.area;
-  if (Object.prototype.hasOwnProperty.call(partial, "resp")) payload.responsable_id = partial.resp || null;
+  if (Object.prototype.hasOwnProperty.call(partial, "resp")) payload.responsable_id = sanitizeResponsableId(partial.resp);
   if (Object.prototype.hasOwnProperty.call(partial, "doc")) payload.documentacion = partial.doc;
   if (Object.prototype.hasOwnProperty.call(partial, "prio")) payload.prioridad = partial.prio;
   if (Object.prototype.hasOwnProperty.call(partial, "notas")) payload.notas = partial.notas || "";
@@ -2040,7 +2049,7 @@ export default function App() {
       padron_numero: cleanText(form.padronNumero),
       estado: form.estado,
       area_actual: form.area,
-      responsable_id: form.resp || null,
+      responsable_id: sanitizeResponsableId(form.resp),
       notas: form.notas || "",
       ultima_actualizacion: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -2504,7 +2513,7 @@ export default function App() {
         plano_path: "",
         estado: "revision_inicial",
         area_actual: "Mesa de Entradas",
-        responsable_id: null,
+        responsable_id: sanitizeResponsableId(null),
         documentacion: "incompleta",
         dias_sin_avance: 0,
         prioridad: "baja",
