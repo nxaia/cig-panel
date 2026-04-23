@@ -140,6 +140,7 @@ const BARRIOS = {
 const LOGIN_USERS = [
   { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
   { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
+  { id: "usuario", nombre: "Usuario", rol: "Solo lectura", area: "Consulta", tecnico: false, canEdit: false },
 ];
 
 const MIN_PAGE_SIZE = 5;
@@ -306,6 +307,7 @@ async function hashPassword(value) {
 function getLoginClaveById(userId) {
   if (userId === "estela-palacios") return "estela";
   if (userId === "carlos-chauvet") return "carlos";
+  if (userId === "usuario") return "usuario";
   return "";
 }
 
@@ -904,11 +906,12 @@ function Doc({ doc }) {
 
 function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange, onOpenChangePassword, onOpenManualReset }) {
   const [showPassword, setShowPassword] = useState(false);
-  const selectedNeedsPassword = true;
+  const selectedNeedsPassword = selectedUserId !== "usuario";
 
   const getUserSubtitle = (user) => {
     if (user.id === "estela-palacios") return "Directora";
     if (user.id === "carlos-chauvet") return "Responsable de área técnica";
+    if (user.id === "usuario") return "Solo lectura";
     return "Usuario autorizado";
   };
 
@@ -992,7 +995,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ fontSize: 16, color: C.slate, fontWeight: 800, marginTop: 2 }}>Regularización Dominial y Hábitat</div>
 
           <div style={{ maxWidth: 520, margin: "8px auto 0", color: C.muted, fontSize: 11, lineHeight: 1.25 }}>
-            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
+            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña si corresponde.
           </div>
 
           <div style={{ maxWidth: 480, margin: "8px auto 0", display: "grid", gap: 8 }}>
@@ -1051,7 +1054,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   type={showPassword ? "text" : "password"}
                   value={loginPassword}
                   onChange={(e) => onPasswordChange(e.target.value)}
-                  placeholder="Ingresá la contraseña"
+                  placeholder={selectedNeedsPassword ? "Ingresá la contraseña" : "Ingreso sin contraseña"}
                   style={{ ...inputStyle, background: "#fff", paddingRight: 38, paddingTop: 8, paddingBottom: 8 }}
                 />
                 <button
@@ -1076,7 +1079,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 </button>
               </div>
               <div style={{ marginTop: 4, fontSize: 10, color: C.dim, lineHeight: 1.2 }}>
-                Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Usuario entra solo en modo consulta.
+                Para Estela y Carlos, la primera contraseña que cargues quedará registrada automáticamente. Usuario entra solo en modo consulta y sin contraseña.
               </div>
 
               {selectedNeedsPassword ? (
@@ -1859,7 +1862,9 @@ export default function App() {
       return;
     }
 
-    if (!cleanText(loginPassword)) {
+    const selectedNeedsPassword = Boolean(selectedUser?.canEdit);
+
+    if (selectedNeedsPassword && !cleanText(loginPassword)) {
       setLoginError("Ingresá la contraseña para continuar.");
       return;
     }
@@ -1885,14 +1890,25 @@ export default function App() {
         throw new Error("El usuario no existe en la tabla panel_usuarios.");
       }
 
-      const incomingHash = await hashPassword(loginPassword);
+      if (selectedNeedsPassword) {
+        const incomingHash = await hashPassword(loginPassword);
 
-      if (!panelUser.password_hash) {
-        throw new Error("Este usuario no tiene contraseña configurada en panel_usuarios. Definila primero desde la base o usando el reseteo manual.");
-      }
+        if (!panelUser.password_hash) {
+          const { error: bootstrapPasswordError } = await supabase
+            .from("panel_usuarios")
+            .update({
+              password_hash: incomingHash,
+              password_set_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", panelUser.id);
 
-      if (panelUser.password_hash !== incomingHash) {
-        throw new Error("Contraseña incorrecta.");
+          if (bootstrapPasswordError) {
+            throw new Error(bootstrapPasswordError.message || "No se pudo registrar la contraseña inicial.");
+          }
+        } else if (panelUser.password_hash !== incomingHash) {
+          throw new Error("Contraseña incorrecta.");
+        }
       }
 
       const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
