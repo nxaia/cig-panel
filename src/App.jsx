@@ -11,7 +11,7 @@ const supabase =
 
 const PLANOS_BUCKET = "planos-expedientes";
 const PLANOS_TABLE = "expediente_planos";
-const MAX_PLANO_FILE_SIZE_MB = 15;
+const MAX_PLANO_FILE_SIZE_MB = 50;
 const ALLOWED_PLANO_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv"];
 const ALLOWED_PLANO_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "xls", "xlsx", "csv"];
 
@@ -1567,8 +1567,9 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                               <span style={{ fontSize: 10, color: C.dim, border: `1px solid ${C.border}`, borderRadius: 999, padding: "1px 6px" }}>{getAttachmentLabel(plano.nombreOriginal, plano.tipoMime)}</span>
                             </div>
                             <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
-                              {plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "Archivo adjunto"}
-                              {plano.createdAt ? ` • ${formatDateTime(plano.createdAt)}` : ""}
+                              {plano.createdAt ? `Cargado: ${formatDateTime(plano.createdAt)}` : "Cargado: sin fecha"}
+                              {" • "}
+                              {`Peso: ${plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "sin dato"}`}
                             </div>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
