@@ -1569,7 +1569,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
                             <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
                               {plano.createdAt ? `Cargado: ${formatDateTime(plano.createdAt)}` : "Cargado: sin fecha"}
                               {" • "}
-                              {`Peso: ${plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "sin dato"}`}
+                              {`Peso: ${plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "no registrado"}`}
                             </div>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -2376,8 +2376,9 @@ export default function App() {
           archivo_path: filePath,
           nombre_original: file.name,
           tipo_mime: file.type || null,
-          tamano_bytes: file.size || 0,
+          tamano_bytes: Number(file.size || 0),
           uploaded_by: activeUser?.nombre || null,
+          created_at: new Date().toISOString(),
         };
 
         const { error: planoInsertError } = await supabase.from(PLANOS_TABLE).insert(metadataPayload);
