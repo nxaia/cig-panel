@@ -11,7 +11,7 @@ const supabase =
 
 const PLANOS_BUCKET = "planos-expedientes";
 const PLANOS_TABLE = "expediente_planos";
-const MAX_PLANO_FILE_SIZE_MB = 50;
+const MAX_PLANO_FILE_SIZE_MB = 15;
 const ALLOWED_PLANO_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv"];
 const ALLOWED_PLANO_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "xls", "xlsx", "csv"];
 
@@ -51,11 +51,6 @@ const PRIORIDADES = {
 const AREAS = ["", "Catastro", "Obras", "Legales", "Escribanía", "Topografía", "Dirección", "Mesa de Entradas"];
 const LOCALIDADES = ["Banda del Río Salí", "Lastenia"];
 const ESTADOS_CIVILES = ["", "Soltero/a", "Casado/a", "Divorciado/a", "Viudo/a", "Unión convivencial", "Otro"];
-const RESPONSABLES = [
-  { id: "carlos-chauvet", nombre: "Carlos Chauvet" },
-  { id: "emmanuel-aguilar", nombre: "Emmanuel Aguilar" },
-  { id: "andres-ferrer", nombre: "Andrés Ferrer" },
-];
 
 const ALL_BARRIOS = [
   "Barrio 140 Viviendas",
@@ -138,15 +133,15 @@ const BARRIOS = {
 };
 
 const LOGIN_USERS = [
-  { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
-  { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
-  { id: "usuario", nombre: "Usuario", rol: "Solo lectura", area: "Consulta", tecnico: false, canEdit: false },
+  { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true, canAddExecutiveNotes: false },
+  { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true, canAddExecutiveNotes: false },
+  { id: "gonzalo-monteros", nombre: "Gonzalo Monteros", rol: "Intendente", area: "Intendencia", tecnico: false, canEdit: false, canAddExecutiveNotes: true },
+  { id: "usuario", nombre: "Usuario", rol: "Solo lectura", area: "Consulta", tecnico: false, canEdit: false, canAddExecutiveNotes: false },
 ];
 
 const MIN_PAGE_SIZE = 5;
 const MAX_PAGE_SIZE = 14;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
-const PASSWORD_HASH_CACHE_KEY = "cig_panel_password_hash_cache_v1";
 
 
 const TABLE_COLGROUP = [
@@ -155,7 +150,6 @@ const TABLE_COLGROUP = [
   { key: "titular", width: "190px" },
   { key: "dni", width: "92px" },
   { key: "contacto", width: "108px" },
-  { key: "direccion", width: "170px" },
   { key: "estadoCivil", width: "120px" },
   { key: "barrio", width: "170px" },
   { key: "padron", width: "100px" },
@@ -308,33 +302,9 @@ async function hashPassword(value) {
 function getLoginClaveById(userId) {
   if (userId === "estela-palacios") return "estela";
   if (userId === "carlos-chauvet") return "carlos";
+  if (userId === "gonzalo-monteros") return "gonzalo-monteros";
   if (userId === "usuario") return "usuario";
   return "";
-}
-
-function readPasswordHashCache() {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(PASSWORD_HASH_CACHE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function getCachedPasswordHash(userId) {
-  const cache = readPasswordHashCache();
-  return cleanText(cache?.[userId]);
-}
-
-function setCachedPasswordHash(userId, passwordHash) {
-  if (typeof window === "undefined" || !userId) return;
-  try {
-    const cache = readPasswordHashCache();
-    cache[userId] = cleanText(passwordHash);
-    window.localStorage.setItem(PASSWORD_HASH_CACHE_KEY, JSON.stringify(cache));
-  } catch {}
 }
 
 function normalizeTitular(value) {
@@ -343,15 +313,6 @@ function normalizeTitular(value) {
 
 function normalizePhone(value) {
   return cleanText(value).replace(/\s+/g, "");
-}
-
-function isUuidLike(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cleanText(value));
-}
-
-function sanitizeResponsableId(value) {
-  const normalized = cleanText(value);
-  return isUuidLike(normalized) ? normalized : null;
 }
 
 function stripAccents(value) {
@@ -543,6 +504,47 @@ function buildPlanosIndex(rows) {
   return index;
 }
 
+function normalizeObservacionIntendente(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    expedienteId: row.expediente_id,
+    autorNombre: row.autor_nombre || "Gonzalo Monteros",
+    autorRol: row.autor_rol || "Intendente",
+    observacion: row.observacion || "",
+    createdAt: row.created_at || null,
+  };
+}
+
+function buildObservacionesIndex(rows) {
+  const index = {};
+  for (const row of rows || []) {
+    const normalized = normalizeObservacionIntendente(row);
+    if (!normalized?.expedienteId) continue;
+    if (!index[normalized.expedienteId]) index[normalized.expedienteId] = [];
+    index[normalized.expedienteId].push(normalized);
+  }
+
+  Object.keys(index).forEach((key) => {
+    index[key].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  });
+
+  return index;
+}
+
+async function fetchObservacionesIntendenteIndex(expedienteIds = []) {
+  if (!supabase || !Array.isArray(expedienteIds) || expedienteIds.length === 0) return { data: {}, error: null };
+
+  const { data, error } = await supabase
+    .from("observaciones_intendente")
+    .select("id, expediente_id, autor_nombre, autor_rol, observacion, created_at")
+    .in("expediente_id", expedienteIds)
+    .order("created_at", { ascending: false });
+
+  if (error) return { data: {}, error };
+  return { data: buildObservacionesIndex(data || []), error: null };
+}
+
 async function fetchPlanosIndex(expedienteIds = []) {
   if (!supabase || !Array.isArray(expedienteIds) || expedienteIds.length === 0) return { data: {}, error: null };
 
@@ -576,7 +578,6 @@ function normalizeExpediente(row) {
     titular: normalizeTitular(row.titular),
     dni: row.dni || "",
     telefono: normalizePhone(row.telefono),
-    direccion: row.direccion || "",
     barrio: row.barrio || "",
     estadoCivil: row.estado_civil || "",
     padronNumero: row.padron_numero || "",
@@ -602,8 +603,6 @@ function buildUpdatePayload(partial) {
   if (Object.prototype.hasOwnProperty.call(partial, "titular")) payload.titular = normalizeTitular(partial.titular);
   if (Object.prototype.hasOwnProperty.call(partial, "dni")) payload.dni = cleanText(partial.dni);
   if (Object.prototype.hasOwnProperty.call(partial, "telefono")) payload.telefono = normalizePhone(partial.telefono);
-  if (Object.prototype.hasOwnProperty.call(partial, "num")) payload.numero_expediente = cleanText(partial.num);
-  if (Object.prototype.hasOwnProperty.call(partial, "direccion")) payload.direccion = cleanText(partial.direccion);
   if (Object.prototype.hasOwnProperty.call(partial, "barrio")) payload.barrio = partial.barrio;
   if (Object.prototype.hasOwnProperty.call(partial, "estadoCivil")) payload.estado_civil = cleanText(partial.estadoCivil);
   if (Object.prototype.hasOwnProperty.call(partial, "padronNumero")) payload.padron_numero = cleanText(partial.padronNumero);
@@ -611,7 +610,7 @@ function buildUpdatePayload(partial) {
   if (Object.prototype.hasOwnProperty.call(partial, "planoPath")) payload.plano_path = cleanText(partial.planoPath);
   if (Object.prototype.hasOwnProperty.call(partial, "estado")) payload.estado = partial.estado;
   if (Object.prototype.hasOwnProperty.call(partial, "area")) payload.area_actual = partial.area;
-  if (Object.prototype.hasOwnProperty.call(partial, "resp")) payload.responsable_id = sanitizeResponsableId(partial.resp);
+  if (Object.prototype.hasOwnProperty.call(partial, "resp")) payload.responsable_id = partial.resp || null;
   if (Object.prototype.hasOwnProperty.call(partial, "doc")) payload.documentacion = partial.doc;
   if (Object.prototype.hasOwnProperty.call(partial, "prio")) payload.prioridad = partial.prio;
   if (Object.prototype.hasOwnProperty.call(partial, "notas")) payload.notas = partial.notas || "";
@@ -939,15 +938,111 @@ function Doc({ doc }) {
   );
 }
 
+function IntendenteDashboard({ data }) {
+  const estadosKeys = Object.keys(ESTADOS);
+  const rows = useMemo(() => {
+    const grouped = {};
+    for (const exp of data || []) {
+      const zona = splitBarrio(exp.barrio);
+      const barrio = cleanText(zona.barrio) || cleanText(exp.barrio) || "Sin barrio";
+      if (!grouped[barrio]) {
+        grouped[barrio] = { barrio, total: 0, listos: 0, estados: Object.fromEntries(estadosKeys.map((key) => [key, 0])) };
+      }
+      grouped[barrio].total += 1;
+      grouped[barrio].estados[exp.estado] = (grouped[barrio].estados[exp.estado] || 0) + 1;
+      if (exp.estado === "listo") grouped[barrio].listos += 1;
+    }
+
+    return Object.values(grouped)
+      .map((row) => ({ ...row, avance: row.total ? Math.round((row.listos / row.total) * 100) : 0 }))
+      .sort((a, b) => b.total - a.total || a.barrio.localeCompare(b.barrio));
+  }, [data]);
+
+  const totalExpedientes = data.length;
+  const totalListos = data.filter((exp) => exp.estado === "listo").length;
+  const avanceGeneral = totalExpedientes ? Math.round((totalListos / totalExpedientes) * 100) : 0;
+  const barriosConDetenidos = rows.filter((row) => row.estados.detenido > 0).length;
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase" }}>Expedientes</div>
+          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{totalExpedientes}</div>
+          <div style={{ marginTop: 8, color: C.dim, fontSize: 12 }}>Total cargado en el sistema</div>
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase" }}>Barrios</div>
+          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{rows.length}</div>
+          <div style={{ marginTop: 8, color: C.dim, fontSize: 12 }}>Con expedientes registrados</div>
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase" }}>Avance general</div>
+          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{avanceGeneral}%</div>
+          <div style={{ marginTop: 10, height: 9, background: "#e2e8f0", borderRadius: 999, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${avanceGeneral}%`, background: C.green }} />
+          </div>
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase" }}>Barrios con detenidos</div>
+          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{barriosConDetenidos}</div>
+          <div style={{ marginTop: 8, color: C.dim, fontSize: 12 }}>Requieren seguimiento ejecutivo</div>
+        </div>
+      </div>
+
+      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid #f1f5f9" }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.slate }}>Estado por barrio</div>
+          <div style={{ marginTop: 4, fontSize: 12, color: C.muted }}>Avance calculado sobre expedientes listos respecto del total del barrio.</div>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", minWidth: 1080, borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: "#fafafa", borderBottom: "1px solid #f1f5f9" }}>
+                {["Barrio", "Total", ...estadosKeys.map((key) => ESTADOS[key].label), "Avance"].map((head) => (
+                  <th key={head} style={{ padding: "9px 10px", textAlign: "left", color: C.dim, fontSize: 10, textTransform: "uppercase", letterSpacing: ".05em" }}>{head}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan={estadosKeys.length + 3} style={{ padding: 20, color: C.dim }}>No hay expedientes cargados.</td></tr>
+              ) : rows.map((row) => (
+                <tr key={row.barrio} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <td style={{ padding: "10px", fontWeight: 800, color: C.slate }}>{row.barrio}</td>
+                  <td style={{ padding: "10px", fontWeight: 700 }}>{row.total}</td>
+                  {estadosKeys.map((key) => (
+                    <td key={key} style={{ padding: "10px", color: row.estados[key] ? C.slate : C.dim, fontWeight: row.estados[key] ? 700 : 500 }}>{row.estados[key] || 0}</td>
+                  ))}
+                  <td style={{ padding: "10px", minWidth: 170 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1, height: 8, background: "#e2e8f0", borderRadius: 999, overflow: "hidden" }}>
+                        <div style={{ width: `${row.avance}%`, height: "100%", background: row.avance >= 70 ? C.green : row.avance >= 35 ? C.amber : C.red }} />
+                      </div>
+                      <div style={{ width: 38, textAlign: "right", fontWeight: 800 }}>{row.avance}%</div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange, onOpenChangePassword, onOpenManualReset }) {
   const [showPassword, setShowPassword] = useState(false);
-  const selectedNeedsPassword = selectedUserId !== "usuario";
+  const selectedUser = LOGIN_USERS.find((user) => user.id === selectedUserId);
+  const selectedNeedsPassword = Boolean(selectedUser?.canEdit);
 
   const getUserSubtitle = (user) => {
     if (user.id === "estela-palacios") return "Directora";
     if (user.id === "carlos-chauvet") return "Responsable de área técnica";
+    if (user.id === "gonzalo-monteros") return "Intendente · tablero ejecutivo";
     if (user.id === "usuario") return "Solo lectura";
-    return "Usuario autorizado";
+    return "";
   };
 
   return (
@@ -1030,7 +1125,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
           <div style={{ fontSize: 16, color: C.slate, fontWeight: 800, marginTop: 2 }}>Regularización Dominial y Hábitat</div>
 
           <div style={{ maxWidth: 520, margin: "8px auto 0", color: C.muted, fontSize: 11, lineHeight: 1.25 }}>
-            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña si corresponde.
+            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
           </div>
 
           <div style={{ maxWidth: 480, margin: "8px auto 0", display: "grid", gap: 8 }}>
@@ -1114,7 +1209,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 </button>
               </div>
               <div style={{ marginTop: 4, fontSize: 10, color: C.dim, lineHeight: 1.2 }}>
-                Para Estela y Carlos, la primera contraseña que cargues quedará registrada automáticamente. Usuario entra solo en modo consulta y sin contraseña.
+                Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Intendente y Usuario entran en modo consulta.
               </div>
 
               {selectedNeedsPassword ? (
@@ -1265,13 +1360,15 @@ function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, on
   );
 }
 
-function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [], onNext, modalIndex = 0, modalTotal = 0 }) {
+function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [], onNext, modalIndex = 0, modalTotal = 0, activeUser, observacionesIntendente = [], onAddObservacionIntendente, addingObservacionIntendente }) {
   const [draft, setDraft] = useState(item || null);
   const [previewFileId, setPreviewFileId] = useState("");
+  const [observacionIntendenteDraft, setObservacionIntendenteDraft] = useState("");
 
   useEffect(() => {
     setDraft(item || null);
     setPreviewFileId("");
+    setObservacionIntendenteDraft("");
   }, [item]);
 
   if (!draft) return null;
@@ -1329,24 +1426,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, color: "#bae6fd", fontWeight: 600, textTransform: "uppercase" }}>Expediente</div>
-              {canEdit ? (
-                <input
-                  value={draft.num}
-                  onChange={(e) => updateField("num", e.target.value)}
-                  style={{
-                    marginTop: 3,
-                    fontSize: 22,
-                    fontWeight: 700,
-                    color: "#fff",
-                    background: "transparent",
-                    border: "1px solid rgba(255,255,255,0.35)",
-                    borderRadius: 8,
-                    padding: "4px 8px",
-                    outline: "none",
-                    minWidth: 220,
-                  }}
-                />
-              ) : <div style={{ fontSize: 22, fontWeight: 700, marginTop: 3 }}>{draft.num}</div>}
+              <div style={{ fontSize: 22, fontWeight: 700, marginTop: 3 }}>{draft.num}</div>
               {modalTotal > 0 ? <div style={{ fontSize: 12, color: "#e0f2fe", marginTop: 4 }}>Expediente {modalIndex + 1} de {modalTotal}</div> : null}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1376,7 +1456,6 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
             <div><div style={labelStyle}>Titular</div><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>DNI</div><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>Contacto</div><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={inputStyle} /></div>
-            <div><div style={labelStyle}>Dirección</div><input value={draft.direccion || ""} disabled={!canEdit} onChange={(e) => updateField("direccion", e.target.value)} style={inputStyle} /></div>
             <div><div style={labelStyle}>Estado civil</div><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={inputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></div>
             <div><div style={labelStyle}>Localidad</div><select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={inputStyle}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select></div>
             <div><div style={labelStyle}>Barrio</div><select value={zona.barrio || ""} disabled={!canEdit} onChange={(e) => updateZona("barrio", e.target.value)} style={inputStyle}><option value="">Seleccionar</option>{barrios.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
@@ -1388,6 +1467,41 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
               <div style={labelStyle}>Notas internas</div>
               <textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
             </div>
+            <div style={{ gridColumn: "1 / -1", background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: C.slate, fontWeight: 800 }}>Observaciones del Intendente</div>
+                  <div style={{ marginTop: 3, fontSize: 11, color: C.dim }}>Historial ejecutivo separado de las notas internas.</div>
+                </div>
+                {activeUser?.canAddExecutiveNotes ? <span style={{ fontSize: 11, color: C.indigo, fontWeight: 700 }}>Puede agregar observaciones</span> : null}
+              </div>
+
+              {activeUser?.canAddExecutiveNotes ? (
+                <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+                  <textarea value={observacionIntendenteDraft} onChange={(e) => setObservacionIntendenteDraft(e.target.value)} rows={3} placeholder="Escribir observación ejecutiva..." style={{ ...inputStyle, resize: "vertical", background: "#fff" }} />
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button type="button" onClick={async () => { if (!cleanText(observacionIntendenteDraft) || !onAddObservacionIntendente) return; const ok = await onAddObservacionIntendente(draft.id, observacionIntendenteDraft); if (ok) setObservacionIntendenteDraft(""); }} disabled={addingObservacionIntendente || !cleanText(observacionIntendenteDraft)} style={{ ...btnPrimary, opacity: addingObservacionIntendente || !cleanText(observacionIntendenteDraft) ? 0.7 : 1 }}>
+                      {addingObservacionIntendente ? "Guardando..." : "Guardar observación"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {observacionesIntendente.length === 0 ? (
+                  <div style={{ color: C.dim, fontSize: 12 }}>Todavía no hay observaciones del Intendente.</div>
+                ) : observacionesIntendente.map((obs) => (
+                  <div key={obs.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 800, color: C.slate, fontSize: 13 }}>{obs.autorNombre} · {obs.autorRol}</div>
+                      <div style={{ color: C.dim, fontSize: 11 }}>{formatDateTime(obs.createdAt)}</div>
+                    </div>
+                    <div style={{ marginTop: 7, color: C.text, fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{obs.observacion}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div style={{ gridColumn: "1 / -1" }}>
               <div style={labelStyle}>Archivos adjuntos</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12 }}>
@@ -1490,7 +1604,6 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
     titular: "",
     dni: "",
     telefono: "",
-    direccion: "",
     localidad: "Banda del Río Salí",
     barrioSeleccionado: "",
     barrioManual: "",
@@ -1509,7 +1622,6 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
         titular: "",
         dni: "",
         telefono: "",
-        direccion: "",
         localidad: "Banda del Río Salí",
         barrioSeleccionado: "",
         barrioManual: "",
@@ -1544,7 +1656,6 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
       titular: form.titular,
       dni: form.dni,
       telefono: form.telefono,
-      direccion: form.direccion,
       localidad: form.localidad,
       barrio: barrioFinal,
       estadoCivil: form.estadoCivil,
@@ -1568,7 +1679,6 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
           <input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nombre del titular" style={inputStyle} />
           <input value={form.dni} onChange={(e) => set("dni", e.target.value)} placeholder="DNI" style={inputStyle} />
           <input value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="Contacto / teléfono" style={inputStyle} />
-          <input value={form.direccion} onChange={(e) => set("direccion", e.target.value)} placeholder="Dirección" style={inputStyle} />
           <select value={form.estadoCivil} onChange={(e) => set("estadoCivil", e.target.value)} style={inputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Estado civil"}</option>)}</select>
           <input value={form.padronNumero} onChange={(e) => set("padronNumero", e.target.value)} placeholder="N° de padrón" style={inputStyle} />
           <select value={form.localidad} onChange={(e) => { set("localidad", e.target.value); set("barrioSeleccionado", ""); set("barrioManual", ""); }} style={inputStyle}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
@@ -1630,7 +1740,6 @@ function ExpedienteRow({ exp, rowIndex = 0, users, usersMap, onSaveField, onOpen
       <td style={{ background: rowBg, padding: "6px 5px", width: 220 }}><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
       <td style={{ background: rowBg, padding: "6px 5px", width: 100 }}><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
       <td style={{ background: rowBg, padding: "6px 5px", width: 118 }}><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
-      <td style={{ background: rowBg, padding: "6px 5px", width: 170 }}><input value={draft.direccion || ""} disabled={!canEdit} onChange={(e) => updateField("direccion", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
       <td style={{ background: rowBg, padding: "6px 5px", width: 120 }}><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></td>
       <td style={{ background: rowBg, padding: "6px 5px", width: 190 }}>
         <select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg, marginBottom: 8 }}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
@@ -1706,6 +1815,7 @@ export default function App() {
   const [data, setData] = useState([]);
   const [users, setUsers] = useState([]);
   const [planosByExpediente, setPlanosByExpediente] = useState({});
+  const [observacionesByExpediente, setObservacionesByExpediente] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeNav, setActiveNav] = useState("Dashboard");
   const [search, setSearch] = useState("");
@@ -1740,6 +1850,7 @@ export default function App() {
   const [savingField, setSavingField] = useState("");
   const [uploadingPlanoId, setUploadingPlanoId] = useState("");
   const [deletingPlanoId, setDeletingPlanoId] = useState("");
+  const [addingObservacionIntendente, setAddingObservacionIntendente] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(typeof window !== "undefined" ? window.innerHeight : 900);
   const saveTimersRef = useRef({});
 
@@ -1752,8 +1863,7 @@ export default function App() {
   const [bulkResponsable, setBulkResponsable] = useState("");
 
   const fechaActual = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
-  const responsables = useMemo(() => RESPONSABLES, []);
-  const usersMap = useMemo(() => buildUsersMap(responsables), [responsables]);
+  const usersMap = useMemo(() => buildUsersMap(users), [users]);
   const canEdit = Boolean(activeUser?.canEdit);
   const barrioFilterOptions = useMemo(() => buildBarrioFilterOptions(), []);
 
@@ -1862,6 +1972,11 @@ export default function App() {
       setPlanosByExpediente(planosResult.data || {});
     }
 
+    const observacionesResult = await fetchObservacionesIntendenteIndex(expedienteIds);
+    if (!observacionesResult.error) {
+      setObservacionesByExpediente(observacionesResult.data || {});
+    }
+
     const mergedRows = dedupeResult.uniqueRows.map((row) => {
       const planos = (planosResult.data || {})[row.id] || [];
       const latestPlano = planos[0] || null;
@@ -1911,27 +2026,27 @@ export default function App() {
     try {
       const usuarioClave = getLoginClaveById(selectedUser.id);
 
-      const { data: panelUser, error: panelUserError } = await supabase
-        .from("panel_usuarios")
-        .select("id, nombre, usuario_clave, password_hash, password_set_at, rol, area")
-        .eq("usuario_clave", usuarioClave)
-        .maybeSingle();
-
-      if (panelUserError) {
-        throw new Error(panelUserError.message || "No se pudo validar el usuario.");
-      }
-
-      if (!panelUser) {
-        throw new Error("El usuario no existe en la tabla panel_usuarios.");
-      }
-
       if (selectedNeedsPassword) {
-        const incomingHash = await hashPassword(loginPassword);
-        const dbHash = cleanText(panelUser.password_hash);
-        const cachedHash = getCachedPasswordHash(selectedUser.id);
-        const effectiveHash = dbHash || cachedHash;
+        const { data: panelUser, error: panelUserError } = await supabase
+          .from("panel_usuarios")
+          .select("id, nombre, usuario_clave, password_hash, password_set_at, rol, area")
+          .eq("usuario_clave", usuarioClave)
+          .maybeSingle();
 
-        if (!effectiveHash) {
+        if (panelUserError) {
+          throw new Error(panelUserError.message || "No se pudo validar el usuario.");
+        }
+
+        if (!panelUser) {
+          throw new Error("El usuario no existe en la tabla panel_usuarios.");
+        }
+
+        const incomingHash = await hashPassword(loginPassword);
+        const cachedHashes = readPasswordHashCache();
+        const cachedHash = cachedHashes[usuarioClave] || "";
+        const currentHash = panelUser.password_hash || cachedHash;
+
+        if (!currentHash) {
           const { error: bootstrapPasswordError } = await supabase
             .from("panel_usuarios")
             .update({
@@ -1944,16 +2059,20 @@ export default function App() {
           if (bootstrapPasswordError) {
             throw new Error(bootstrapPasswordError.message || "No se pudo registrar la contraseña inicial.");
           }
+          writePasswordHashCache(usuarioClave, incomingHash);
+        } else if (currentHash !== incomingHash) {
+          throw new Error("Contraseña incorrecta.");
+        } else if (!panelUser.password_hash && cachedHash === incomingHash) {
+          const { error: syncPasswordError } = await supabase
+            .from("panel_usuarios")
+            .update({
+              password_hash: incomingHash,
+              password_set_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", panelUser.id);
 
-          setCachedPasswordHash(selectedUser.id, incomingHash);
-        } else {
-          if (effectiveHash !== incomingHash) {
-            throw new Error("Contraseña incorrecta.");
-          }
-
-          if (dbHash && dbHash !== cachedHash) {
-            setCachedPasswordHash(selectedUser.id, dbHash);
-          }
+          if (!syncPasswordError) writePasswordHashCache(usuarioClave, incomingHash);
         }
       }
 
@@ -1998,7 +2117,7 @@ export default function App() {
       const usuarioClave = getLoginClaveById(targetUserId);
       const targetUser = LOGIN_USERS.find((u) => u.id === targetUserId);
 
-      if (!usuarioClave || !targetUser) {
+      if (!usuarioClave || !targetUser || targetUserId === "usuario") {
         throw new Error("Solo Estela y Carlos pueden usar esta función.");
       }
 
@@ -2011,13 +2130,9 @@ export default function App() {
       if (panelUserError) throw new Error(panelUserError.message || "No se pudo validar el usuario.");
       if (!panelUser) throw new Error("El usuario no existe en la tabla panel_usuarios.");
 
-      const dbHash = cleanText(panelUser.password_hash);
-      const cachedHash = getCachedPasswordHash(targetUserId);
-      const effectiveHash = dbHash || cachedHash;
-
-      if (passwordModalMode === "change" && effectiveHash) {
+      if (passwordModalMode === "change") {
         const currentHash = await hashPassword(currentPassword);
-        if (effectiveHash !== currentHash) {
+        if (panelUser.password_hash && panelUser.password_hash !== currentHash) {
           throw new Error("La contraseña actual es incorrecta.");
         }
       }
@@ -2034,7 +2149,6 @@ export default function App() {
 
       if (updateError) throw new Error(updateError.message || "No se pudo guardar la contraseña.");
 
-      setCachedPasswordHash(targetUserId, nextHash);
       setPasswordModalOpen(false);
       setNotice(passwordModalMode === "change" ? "Contraseña actualizada correctamente." : `Contraseña reseteada para ${targetUser.nombre}.`);
     } catch (err) {
@@ -2044,34 +2158,39 @@ export default function App() {
     }
   }
 
+  async function addObservacionIntendente(expedienteId, observacion) {
+    if (!supabase || !activeUser?.canAddExecutiveNotes || !expedienteId || !cleanText(observacion)) return false;
+    setAddingObservacionIntendente(true);
+    setError("");
+    setNotice("");
 
-  async function insertExpedienteWithFallback(payload) {
-    const triedMissingColumns = new Set();
-    let currentPayload = { ...payload };
+    const payload = {
+      expediente_id: expedienteId,
+      autor_nombre: activeUser.nombre,
+      autor_rol: activeUser.rol,
+      observacion: cleanText(observacion),
+    };
 
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      const result = await supabase.from("expedientes").insert(currentPayload).select("*").single();
+    const { data: inserted, error: insertError } = await supabase
+      .from("observaciones_intendente")
+      .insert(payload)
+      .select("id, expediente_id, autor_nombre, autor_rol, observacion, created_at")
+      .single();
 
-      if (!result.error) return result;
+    setAddingObservacionIntendente(false);
 
-      const message = String(result.error.message || "");
-      const missingColumnMatch = message.match(/Could not find the '([^']+)' column/i);
-
-      if (!missingColumnMatch) {
-        return result;
-      }
-
-      const missingColumn = missingColumnMatch[1];
-      if (!missingColumn || triedMissingColumns.has(missingColumn)) {
-        return result;
-      }
-
-      triedMissingColumns.add(missingColumn);
-      const { [missingColumn]: _removed, ...rest } = currentPayload;
-      currentPayload = rest;
+    if (insertError) {
+      setError(`No se pudo guardar la observación del Intendente: ${insertError.message}`);
+      return false;
     }
 
-    return { data: null, error: { message: "No se pudo guardar el expediente por incompatibilidad de columnas." } };
+    const normalized = normalizeObservacionIntendente(inserted);
+    setObservacionesByExpediente((prev) => ({
+      ...prev,
+      [expedienteId]: [normalized, ...(prev[expedienteId] || [])],
+    }));
+    setNotice("Observación del Intendente guardada correctamente.");
+    return true;
   }
 
   async function addExpediente(form) {
@@ -2085,19 +2204,26 @@ export default function App() {
       titular: normalizeTitular(form.titular),
       dni: cleanText(form.dni),
       telefono: normalizePhone(form.telefono),
-      direccion: cleanText(form.direccion),
       barrio: composeBarrio(form.localidad, form.barrio),
       estado_civil: cleanText(form.estadoCivil),
       padron_numero: cleanText(form.padronNumero),
+      plano_url: "",
+      plano_path: "",
       estado: form.estado,
       area_actual: form.area,
-      responsable_id: sanitizeResponsableId(form.resp),
+      responsable_id: form.resp || null,
+      documentacion: "incompleta",
+      dias_sin_avance: 0,
+      prioridad: "baja",
+      observaciones: "",
       notas: form.notas || "",
       ultima_actualizacion: new Date().toISOString(),
+      origen_carga: "manual",
+      editable_tecnico: true,
       updated_at: new Date().toISOString(),
     };
 
-    const { data: inserted, error: insertError } = await insertExpedienteWithFallback(payload);
+    const { data: inserted, error: insertError } = await supabase.from("expedientes").insert(payload).select("*").single();
     if (insertError) {
       setError(`No se pudo guardar el expediente: ${insertError.message}`);
       setSaving(false);
@@ -2555,7 +2681,7 @@ export default function App() {
         plano_path: "",
         estado: "revision_inicial",
         area_actual: "Mesa de Entradas",
-        responsable_id: sanitizeResponsableId(null),
+        responsable_id: null,
         documentacion: "incompleta",
         dias_sin_avance: 0,
         prioridad: "baja",
@@ -2654,8 +2780,7 @@ export default function App() {
   const navItems = [
     { label: "Dashboard", icon: "⊞" },
     { label: "Expedientes", icon: "📋" },
-    { label: "Importar Excel", icon: "⇪" },
-    { label: "Nuevo expediente", icon: "＋" },
+    ...(canEdit ? [{ label: "Importar Excel", icon: "⇪" }, { label: "Nuevo expediente", icon: "＋" }] : []),
   ];
 
   const accessSyncStyle = accessSyncStatus.kind === "success"
@@ -2707,7 +2832,7 @@ export default function App() {
               <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setLoginPassword(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
-              {activeUser ? <button onClick={() => { setPasswordModalMode("change"); setPasswordModalError(""); setPasswordModalOpen(true); }} style={btnGhost}>Cambiar contraseña</button> : null}
+              {activeUser?.canEdit ? <button onClick={() => { setPasswordModalMode("change"); setPasswordModalError(""); setPasswordModalOpen(true); }} style={btnGhost}>Cambiar contraseña</button> : null}
               {canEdit ? <button onClick={() => { setPasswordModalMode("reset"); setPasswordModalError(""); setPasswordModalOpen(true); }} style={btnGhost}>Reset manual admin</button> : null}
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
             </div>
@@ -2720,6 +2845,9 @@ export default function App() {
             {loading ? (
               <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}` }}><EmptyBlock title="Cargando datos del sistema" text="Esperando respuesta de Supabase para usuarios y expedientes." /></div>
             ) : activeNav === "Dashboard" ? (
+              activeUser?.id === "gonzalo-monteros" ? (
+                <IntendenteDashboard data={data} />
+              ) : (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
                   {[["Expedientes únicos", stats.total, "Mostrados en el panel"], ["Completos", stats.completos, "Con datos y adjuntos"], ["En proceso", stats.proceso, "Seguimiento activo"], ["Casos críticos", stats.criticos, "Prioridad crítica"], ["Atrasados (+14d)", stats.atrasados, "Requieren revisión"]].map(([label, value, note]) => (
@@ -2752,6 +2880,7 @@ export default function App() {
                   </div>
                 </div>
               </>
+              )
             ) : activeNav === "Importar Excel" ? (
               <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}`, padding: 22 }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: C.slate }}>Importar archivos Excel</div>
@@ -2832,7 +2961,7 @@ export default function App() {
                         <button onClick={applyBulkEstado} style={{ ...btnGhost, padding: "8px 10px" }}>Aplicar estado</button>
                         <select value={bulkResponsable} onChange={(e) => setBulkResponsable(e.target.value)} style={{ ...compactInputStyle, width: 210 }}>
                           <option value="">Asignar responsable masivo</option>
-                          {responsables.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}
+                          {users.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}
                         </select>
                         <button onClick={applyBulkResponsable} style={{ ...btnGhost, padding: "8px 10px" }}>Aplicar responsable</button>
                       </div>
@@ -2850,7 +2979,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {slice.length === 0 ? <tr><td colSpan={15}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp, rowIndex) => <ExpedienteRow key={exp.id} exp={exp} rowIndex={rowIndex} users={responsables} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} />)}
+                        {slice.length === 0 ? <tr><td colSpan={15}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp, rowIndex) => <ExpedienteRow key={exp.id} exp={exp} rowIndex={rowIndex} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} />)}
                       </tbody>
                     </table>
                   </div>
@@ -2889,9 +3018,9 @@ export default function App() {
         </div>
       </div>
 
-      <ModalExpediente item={modalItem} users={responsables} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} />
+      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} activeUser={activeUser} observacionesIntendente={observacionesByExpediente[modalItem?.id] || []} onAddObservacionIntendente={addObservacionIntendente} addingObservacionIntendente={addingObservacionIntendente} />
       <PasswordAdminModal open={passwordModalOpen} mode={passwordModalMode} selectedUserId={passwordModalMode === "change" ? (activeUser?.id || selectedLoginUserId) : selectedLoginUserId} onClose={() => { setPasswordModalOpen(false); setPasswordModalError(""); }} onSubmit={handlePasswordAction} loading={passwordModalLoading} error={passwordModalError} />
-      <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={responsables} />
+      <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} />
     </div>
   );
 }
