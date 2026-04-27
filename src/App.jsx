@@ -301,6 +301,28 @@ async function hashPassword(value) {
     .join("");
 }
 
+const PASSWORD_HASH_CACHE_KEY = "cig_panel_password_hash_cache_v1";
+
+function readPasswordHashCache() {
+  try {
+    const raw = localStorage.getItem(PASSWORD_HASH_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePasswordHashCache(usuarioClave, passwordHash) {
+  try {
+    if (!usuarioClave || !passwordHash) return;
+    const current = readPasswordHashCache();
+    localStorage.setItem(PASSWORD_HASH_CACHE_KEY, JSON.stringify({ ...current, [usuarioClave]: passwordHash }));
+  } catch {
+    // respaldo local no disponible
+  }
+}
+
 function getLoginClaveById(userId) {
   if (userId === "gonzalo-monteros") return "gonzalo";
   if (userId === "estela-palacios") return "estela";
@@ -1059,7 +1081,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 8,
+        padding: 6,
         boxSizing: "border-box",
         overflowY: "auto",
       }}
@@ -1067,23 +1089,23 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
       <div
         style={{
           width: "100%",
-          maxWidth: 700,
+          maxWidth: 640,
           background: "#fff",
-          borderRadius: 28,
+          borderRadius: 22,
           overflow: "hidden",
           boxShadow: "0 24px 80px rgba(15,23,42,.12)",
           border: `1px solid ${C.border}`,
-          maxHeight: "calc(100vh - 20px)",
+          maxHeight: "calc(100vh - 10px)",
         }}
       >
-        <div style={{ height: 8, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
-        <div style={{ padding: "8px 20px 10px", textAlign: "center" }}>
+        <div style={{ height: 6, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
+        <div style={{ padding: "6px 18px 8px", textAlign: "center" }}>
           <div
             style={{
-              width: 78,
-              height: 78,
-              margin: "0 auto 10px",
-              borderRadius: 22,
+              width: 58,
+              height: 58,
+              margin: "0 auto 6px",
+              borderRadius: 16,
               background: "#fff",
               border: `1px solid ${C.border}`,
               boxShadow: "0 10px 24px rgba(15,23,42,.08)",
@@ -1092,19 +1114,19 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
               justifyContent: "center",
             }}
           >
-            <img src="/logo-icono.png" alt="Municipio" style={{ width: 58, height: 58, objectFit: "contain" }} />
+            <img src="/logo-icono.png" alt="Municipio" style={{ width: 44, height: 44, objectFit: "contain" }} />
           </div>
 
-          <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>MUNICIPALIDAD DE</div>
-          <div style={{ fontSize: 18, color: C.slate, fontWeight: 800, marginTop: 4 }}>Banda del Río Salí</div>
-          <div style={{ width: 82, height: 4, borderRadius: 999, background: "#14b8a6", margin: "8px auto" }} />
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>MUNICIPALIDAD DE</div>
+          <div style={{ fontSize: 16, color: C.slate, fontWeight: 800, marginTop: 2 }}>Banda del Río Salí</div>
+          <div style={{ width: 72, height: 4, borderRadius: 999, background: "#14b8a6", margin: "5px auto" }} />
 
           <div
             style={{
-              width: 78,
-              height: 78,
+              width: 58,
+              height: 58,
               margin: "0 auto",
-              borderRadius: 22,
+              borderRadius: 16,
               background: "#fff",
               border: `1px solid ${C.border}`,
               boxShadow: "0 10px 24px rgba(15,23,42,.08)",
@@ -1117,24 +1139,24 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
               src={logoArea}
               alt="Logo del área"
               style={{
-                width: 68,
-                height: 68,
+                width: 50,
+                height: 50,
                 objectFit: "contain",
                 display: "block",
                 background: "#fff",
-                borderRadius: 18,
+                borderRadius: 14,
               }}
             />
           </div>
 
-          <div style={{ marginTop: 8, fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>DIRECCIÓN DE</div>
-          <div style={{ fontSize: 16, color: C.slate, fontWeight: 800, marginTop: 2 }}>Regularización Dominial y Hábitat</div>
+          <div style={{ marginTop: 5, fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>DIRECCIÓN DE</div>
+          <div style={{ fontSize: 15, color: C.slate, fontWeight: 800, marginTop: 1 }}>Regularización Dominial y Hábitat</div>
 
-          <div style={{ maxWidth: 520, margin: "8px auto 0", color: C.muted, fontSize: 11, lineHeight: 1.25 }}>
+          <div style={{ maxWidth: 520, margin: "5px auto 0", color: C.muted, fontSize: 10, lineHeight: 1.15 }}>
             Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
           </div>
 
-          <div style={{ maxWidth: 480, margin: "8px auto 0", display: "grid", gap: 8 }}>
+          <div style={{ maxWidth: 480, margin: "6px auto 0", display: "grid", gap: 6 }}>
             {LOGIN_USERS.map((user) => {
               const active = selectedUserId === user.id;
               const subtitle = getUserSubtitle(user);
@@ -1144,8 +1166,8 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   onClick={() => onSelectUser(user.id)}
                   style={{
                     textAlign: "left",
-                    padding: "9px 14px",
-                    borderRadius: 16,
+                    padding: "7px 14px",
+                    borderRadius: 14,
                     border: `1px solid ${active ? "#7dd3fc" : C.border}`,
                     background: active ? "#f0f9ff" : "#fff",
                     cursor: "pointer",
@@ -1158,14 +1180,14 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   <div>
                     <div style={{ fontSize: 13, color: C.slate, fontWeight: 700 }}>{user.nombre}</div>
                     {subtitle ? (
-                      <div style={{ marginTop: 2, fontSize: 11, color: C.muted }}>{subtitle}</div>
+                      <div style={{ marginTop: 1, fontSize: 10, color: C.muted }}>{subtitle}</div>
                     ) : null}
                   </div>
                   <div
                     style={{
-                      minWidth: 20,
-                      width: 20,
-                      height: 20,
+                      minWidth: 18,
+                      width: 18,
+                      height: 18,
                       borderRadius: "50%",
                       border: `2px solid ${active ? C.sky : "#cbd5e1"}`,
                       background: active ? C.sky : "#fff",
@@ -1177,7 +1199,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
             })}
           </div>
 
-          <div style={{ maxWidth: 480, margin: "8px auto 0", textAlign: "left" }}>
+          <div style={{ maxWidth: 480, margin: "6px auto 0", textAlign: "left" }}>
             <div style={{ ...labelStyle, marginBottom: 5 }}>Contraseña</div>
             <form
               onSubmit={(e) => {
@@ -1191,7 +1213,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   value={loginPassword}
                   onChange={(e) => onPasswordChange(e.target.value)}
                   placeholder={selectedNeedsPassword ? "Ingresá la contraseña" : "Ingreso sin contraseña"}
-                  style={{ ...inputStyle, background: "#fff", paddingRight: 38, paddingTop: 8, paddingBottom: 8 }}
+                  style={{ ...inputStyle, background: "#fff", paddingRight: 38, paddingTop: 6, paddingBottom: 6 }}
                 />
                 <button
                   type="button"
@@ -1214,16 +1236,16 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   {showPassword ? "🙈" : "👁"}
                 </button>
               </div>
-              <div style={{ marginTop: 4, fontSize: 10, color: C.dim, lineHeight: 1.2 }}>
+              <div style={{ marginTop: 3, fontSize: 9, color: C.dim, lineHeight: 1.1 }}>
                 Para Estela, Carlos, Emmanuel y Andrés, la primera contraseña que cargues quedará registrada. Intendente y Usuario entran en modo consulta.
               </div>
 
               {selectedNeedsPassword ? (
-                <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-                  <button type="button" onClick={onOpenChangePassword} style={{ ...btnGhost, padding: "6px 10px", fontSize: 11 }}>
+                <div style={{ marginTop: 5, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                  <button type="button" onClick={onOpenChangePassword} style={{ ...btnGhost, padding: "5px 10px", fontSize: 11 }}>
                     Cambiar contraseña
                   </button>
-                  <button type="button" onClick={onOpenManualReset} style={{ ...btnGhost, padding: "6px 10px", fontSize: 11 }}>
+                  <button type="button" onClick={onOpenManualReset} style={{ ...btnGhost, padding: "5px 10px", fontSize: 11 }}>
                     Reset manual admin
                   </button>
                 </div>
@@ -1233,7 +1255,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 <div
                   style={{
                     maxWidth: 480,
-                    margin: "8px auto 0",
+                    margin: "6px auto 0",
                     background: "#fef2f2",
                     color: "#991b1b",
                     border: "1px solid #fecaca",
@@ -1246,14 +1268,14 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 </div>
               ) : null}
 
-              <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
+              <div style={{ marginTop: 6, display: "flex", justifyContent: "center" }}>
                 <button
                   type="submit"
                   disabled={loginLoading || !selectedUserId}
                   style={{
                     ...btnPrimary,
-                    padding: "10px 22px",
-                    fontSize: 14,
+                    padding: "8px 22px",
+                    fontSize: 13,
                     borderRadius: 12,
                     minWidth: 200,
                     opacity: loginLoading || !selectedUserId ? 0.7 : 1,
@@ -1320,7 +1342,7 @@ function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, on
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.35)", backdropFilter: "blur(4px)" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 520, margin: "0 16px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.15)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 520, margin: "0 16px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.15)" }}>
         <div style={{ background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", padding: "18px 20px", color: "#fff" }}>
           <div style={{ fontSize: 18, fontWeight: 700 }}>{title}</div>
           <div style={{ fontSize: 12, color: "#bae6fd", marginTop: 4 }}>{helper}</div>
@@ -1418,7 +1440,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "#fff",
-          borderRadius: 18,
+          borderRadius: 14,
           width: "100%",
           maxWidth: 1080,
           margin: "0 16px",
@@ -1676,7 +1698,7 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.35)", backdropFilter: "blur(4px)" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 560, margin: "0 16px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.15)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 560, margin: "0 16px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.15)" }}>
         <div style={{ background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", padding: "20px 22px", color: "#fff" }}>
           <div style={{ fontSize: 18, fontWeight: 700 }}>Nuevo expediente</div>
           <div style={{ fontSize: 12, color: "#bae6fd", marginTop: 4 }}>Carga inicial del expediente</div>
