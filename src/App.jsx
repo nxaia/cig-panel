@@ -133,10 +133,12 @@ const BARRIOS = {
 };
 
 const LOGIN_USERS = [
-  { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true, canAddExecutiveNotes: false },
-  { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true, canAddExecutiveNotes: false },
-  { id: "gonzalo-monteros", nombre: "Gonzalo Monteros", rol: "Intendente", area: "Intendencia", tecnico: false, canEdit: false, canAddExecutiveNotes: true },
-  { id: "usuario", nombre: "Usuario", rol: "Solo lectura", area: "Consulta", tecnico: false, canEdit: false, canAddExecutiveNotes: false },
+  { id: "gonzalo-monteros", nombre: "Gonzalo Monteros", rol: "Intendente", area: "Intendencia", tecnico: false, canEdit: false, requiresPassword: false, canAddExecutiveNotes: true },
+  { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
+  { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
+  { id: "emmanuel-aguilar", nombre: "Emmanuel Aguilar", rol: "Consulta técnica", area: "Técnica", tecnico: true, canEdit: false, requiresPassword: true, canAddExecutiveNotes: false },
+  { id: "andres-ferrer", nombre: "Andrés Ferrer", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
+  { id: "usuario", nombre: "Usuario", rol: "Solo lectura", area: "Consulta", tecnico: false, canEdit: false, requiresPassword: false, canAddExecutiveNotes: false },
 ];
 
 const MIN_PAGE_SIZE = 5;
@@ -300,9 +302,11 @@ async function hashPassword(value) {
 }
 
 function getLoginClaveById(userId) {
+  if (userId === "gonzalo-monteros") return "gonzalo";
   if (userId === "estela-palacios") return "estela";
   if (userId === "carlos-chauvet") return "carlos";
-  if (userId === "gonzalo-monteros") return "gonzalo-monteros";
+  if (userId === "emmanuel-aguilar") return "emmanuel";
+  if (userId === "andres-ferrer") return "andres";
   if (userId === "usuario") return "usuario";
   return "";
 }
@@ -1035,12 +1039,14 @@ function IntendenteDashboard({ data }) {
 function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange, onOpenChangePassword, onOpenManualReset }) {
   const [showPassword, setShowPassword] = useState(false);
   const selectedUser = LOGIN_USERS.find((user) => user.id === selectedUserId);
-  const selectedNeedsPassword = Boolean(selectedUser?.canEdit);
+  const selectedNeedsPassword = Boolean(selectedUser?.requiresPassword);
 
   const getUserSubtitle = (user) => {
+    if (user.id === "gonzalo-monteros") return "Intendente · tablero ejecutivo";
     if (user.id === "estela-palacios") return "Directora";
     if (user.id === "carlos-chauvet") return "Responsable de área técnica";
-    if (user.id === "gonzalo-monteros") return "Intendente · tablero ejecutivo";
+    if (user.id === "emmanuel-aguilar") return "Consulta técnica";
+    if (user.id === "andres-ferrer") return "Área técnica";
     if (user.id === "usuario") return "Solo lectura";
     return "";
   };
@@ -1209,7 +1215,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                 </button>
               </div>
               <div style={{ marginTop: 4, fontSize: 10, color: C.dim, lineHeight: 1.2 }}>
-                Para Estela y Carlos, la primera contraseña que cargues quedará registrada. Intendente y Usuario entran en modo consulta.
+                Para Estela, Carlos, Emmanuel y Andrés, la primera contraseña que cargues quedará registrada. Intendente y Usuario entran en modo consulta.
               </div>
 
               {selectedNeedsPassword ? (
@@ -1272,7 +1278,7 @@ function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, on
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [targetUserId, setTargetUserId] = useState(selectedUserId || "estela-palacios");
+  const [targetUserId, setTargetUserId] = useState(LOGIN_USERS.find((user) => user.id === selectedUserId && user.requiresPassword)?.id || "estela-palacios");
   const [localError, setLocalError] = useState("");
 
   useEffect(() => {
@@ -1281,7 +1287,7 @@ function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, on
       setNextPassword("");
       setConfirmPassword("");
       setLocalError("");
-      setTargetUserId(selectedUserId || "estela-palacios");
+      setTargetUserId(LOGIN_USERS.find((user) => user.id === selectedUserId && user.requiresPassword)?.id || "estela-palacios");
       setShowCurrent(false);
       setShowNext(false);
       setShowConfirm(false);
@@ -1293,7 +1299,7 @@ function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, on
   const title = mode === "change" ? "Cambiar contraseña" : "Reset manual admin";
   const helper = mode === "change"
     ? "Ingresá la contraseña actual y definí la nueva."
-    : "Usá esta opción para resetear la clave manualmente para Estela o Carlos.";
+    : "Usá esta opción para resetear la clave manualmente para Estela, Carlos, Emmanuel o Andrés.";
 
   const submit = () => {
     setLocalError("");
@@ -1322,8 +1328,9 @@ function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, on
         <div style={{ padding: 20, display: "grid", gap: 12 }}>
           {mode === "reset" ? (
             <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)} style={inputStyle}>
-              <option value="estela-palacios">Estela Palacios</option>
-              <option value="carlos-chauvet">Carlos Chauvet</option>
+              {LOGIN_USERS.filter((user) => user.requiresPassword).map((user) => (
+                <option key={user.id} value={user.id}>{user.nombre}</option>
+              ))}
             </select>
           ) : (
             <div style={{ ...inputStyle, background: "#f8fafc", display: "flex", alignItems: "center", minHeight: 42 }}>
@@ -2012,7 +2019,7 @@ export default function App() {
       return;
     }
 
-    const selectedNeedsPassword = Boolean(selectedUser?.canEdit);
+    const selectedNeedsPassword = Boolean(selectedUser?.requiresPassword);
 
     if (selectedNeedsPassword && !cleanText(loginPassword)) {
       setLoginError("Ingresá la contraseña para continuar.");
@@ -2027,6 +2034,7 @@ export default function App() {
       const usuarioClave = getLoginClaveById(selectedUser.id);
 
       if (selectedNeedsPassword) {
+        const incomingHash = await hashPassword(loginPassword);
         const { data: panelUser, error: panelUserError } = await supabase
           .from("panel_usuarios")
           .select("id, nombre, usuario_clave, password_hash, password_set_at, rol, area")
@@ -2037,42 +2045,60 @@ export default function App() {
           throw new Error(panelUserError.message || "No se pudo validar el usuario.");
         }
 
-        if (!panelUser) {
-          throw new Error("El usuario no existe en la tabla panel_usuarios.");
-        }
-
-        const incomingHash = await hashPassword(loginPassword);
         const cachedHashes = readPasswordHashCache();
         const cachedHash = cachedHashes[usuarioClave] || "";
-        const currentHash = panelUser.password_hash || cachedHash;
 
-        if (!currentHash) {
-          const { error: bootstrapPasswordError } = await supabase
+        if (!panelUser) {
+          const { data: createdPanelUser, error: createPanelUserError } = await supabase
             .from("panel_usuarios")
-            .update({
+            .insert({
+              nombre: selectedUser.nombre,
+              usuario_clave: usuarioClave,
               password_hash: incomingHash,
               password_set_at: new Date().toISOString(),
+              rol: selectedUser.rol,
+              area: selectedUser.area,
               updated_at: new Date().toISOString(),
             })
-            .eq("id", panelUser.id);
+            .select("id")
+            .single();
 
-          if (bootstrapPasswordError) {
-            throw new Error(bootstrapPasswordError.message || "No se pudo registrar la contraseña inicial.");
+          if (createPanelUserError || !createdPanelUser) {
+            throw new Error(createPanelUserError?.message || "No se pudo crear el usuario en panel_usuarios.");
           }
-          writePasswordHashCache(usuarioClave, incomingHash);
-        } else if (currentHash !== incomingHash) {
-          throw new Error("Contraseña incorrecta.");
-        } else if (!panelUser.password_hash && cachedHash === incomingHash) {
-          const { error: syncPasswordError } = await supabase
-            .from("panel_usuarios")
-            .update({
-              password_hash: incomingHash,
-              password_set_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", panelUser.id);
 
-          if (!syncPasswordError) writePasswordHashCache(usuarioClave, incomingHash);
+          writePasswordHashCache(usuarioClave, incomingHash);
+        } else {
+          const currentHash = panelUser.password_hash || cachedHash;
+
+          if (!currentHash) {
+            const { error: bootstrapPasswordError } = await supabase
+              .from("panel_usuarios")
+              .update({
+                password_hash: incomingHash,
+                password_set_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", panelUser.id);
+
+            if (bootstrapPasswordError) {
+              throw new Error(bootstrapPasswordError.message || "No se pudo registrar la contraseña inicial.");
+            }
+            writePasswordHashCache(usuarioClave, incomingHash);
+          } else if (currentHash !== incomingHash) {
+            throw new Error("Contraseña incorrecta.");
+          } else if (!panelUser.password_hash && cachedHash === incomingHash) {
+            const { error: syncPasswordError } = await supabase
+              .from("panel_usuarios")
+              .update({
+                password_hash: incomingHash,
+                password_set_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", panelUser.id);
+
+            if (!syncPasswordError) writePasswordHashCache(usuarioClave, incomingHash);
+          }
         }
       }
 
@@ -2117,8 +2143,8 @@ export default function App() {
       const usuarioClave = getLoginClaveById(targetUserId);
       const targetUser = LOGIN_USERS.find((u) => u.id === targetUserId);
 
-      if (!usuarioClave || !targetUser || targetUserId === "usuario") {
-        throw new Error("Solo Estela y Carlos pueden usar esta función.");
+      if (!usuarioClave || !targetUser || !targetUser.requiresPassword) {
+        throw new Error("Solo los usuarios con contraseña pueden usar esta función.");
       }
 
       const { data: panelUser, error: panelUserError } = await supabase
