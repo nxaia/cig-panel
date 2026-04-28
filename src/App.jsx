@@ -136,7 +136,7 @@ const LOGIN_USERS = [
   { id: "gonzalo-monteros", nombre: "Gonzalo Monteros", rol: "Intendente", area: "Intendencia", tecnico: false, canEdit: false, requiresPassword: false, canAddExecutiveNotes: true },
   { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
   { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
-  { id: "emmanuel-aguilar", nombre: "Emmanuel Aguilar", rol: "Consulta técnica", area: "Técnica", tecnico: true, canEdit: false, requiresPassword: true, canAddExecutiveNotes: false },
+  { id: "emmanuel-aguilar", nombre: "Emmanuel Aguilar", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
   { id: "andres-ferrer", nombre: "Andrés Ferrer", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
   { id: "usuario", nombre: "Usuario", rol: "Solo lectura", area: "Consulta", tecnico: false, canEdit: false, requiresPassword: false, canAddExecutiveNotes: false },
 ];
@@ -1067,7 +1067,7 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
     if (user.id === "gonzalo-monteros") return "Intendente · tablero ejecutivo";
     if (user.id === "estela-palacios") return "Directora";
     if (user.id === "carlos-chauvet") return "Responsable de área técnica";
-    if (user.id === "emmanuel-aguilar") return "Consulta técnica";
+    if (user.id === "emmanuel-aguilar") return "Área técnica";
     if (user.id === "andres-ferrer") return "Área técnica";
     if (user.id === "usuario") return "Solo lectura";
     return "";
