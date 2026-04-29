@@ -2696,19 +2696,28 @@ export default function App() {
     const planosResult = await fetchPlanosIndex(expedienteIds);
     if (!planosResult.error) {
       setPlanosByExpediente(planosResult.data || {});
+    } else {
+      setPlanosByExpediente({});
+    }
 
-      const certificadosResult = await fetchCertificados();
-      if (certificadosResult.error) {
-        throw new Error(`No se pudieron cargar los certificados: ${certificadosResult.error.message}`);
-      }
-      setCertificados(certificadosResult.data || []);
+    const certificadosResult = await fetchCertificados();
+    if (certificadosResult.error) {
+      setCertificados([]);
+      setArchivosByCertificado({});
+      setError(`No se pudieron cargar los certificados: ${certificadosResult.error.message}`);
+    } else {
+      const certificadosData = certificadosResult.data || [];
+      setCertificados(certificadosData);
 
-      const certificadosIds = (certificadosResult.data || []).map((cert) => cert.id).filter(Boolean);
+      const certificadosIds = certificadosData.map((cert) => cert.id).filter(Boolean);
       const certArchivosResult = await fetchCertificadoArchivosIndex(certificadosIds);
+
       if (certArchivosResult.error) {
-        throw new Error(`No se pudieron cargar los archivos de certificados: ${certArchivosResult.error.message}`);
+        setArchivosByCertificado({});
+        setNotice(`Los certificados se cargaron, pero no se pudieron cargar sus archivos: ${certArchivosResult.error.message}`);
+      } else {
+        setArchivosByCertificado(certArchivosResult.data || {});
       }
-      setArchivosByCertificado(certArchivosResult.data || {});
     }
 
     const observacionesResult = await fetchObservacionesIntendenteIndex(expedienteIds);
