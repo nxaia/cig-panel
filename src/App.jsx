@@ -1598,40 +1598,78 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
 <head>
 <title>${form.numero || "Informe de residencia"}</title>
 <style>
-body { font-family: Arial, sans-serif; padding: 60px; line-height: 1.6; color: #000; }
-h1 { text-align: center; font-size: 22px; margin-bottom: 30px; }
-p { margin: 12px 0; font-size: 15px; }
+@page {
+  size: A4;
+  margin: 2.5cm 2.2cm 2.2cm 2.2cm;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: #fff;
+  color: #000;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 12pt;
+  line-height: 1.45;
+}
+.page {
+  width: 100%;
+  max-width: 17cm;
+  margin: 0 auto;
+  padding-top: 2.2cm;
+}
+.date {
+  text-align: right;
+  margin-bottom: 1.1cm;
+}
+.title {
+  text-align: center;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 15pt;
+  font-weight: 700;
+  margin: 0 0 1cm 0;
+  letter-spacing: .2px;
+}
+p {
+  margin: 0 0 10pt 0;
+  text-align: left;
+}
+.bold {
+  font-weight: 700;
+}
+.spacer {
+  height: 1.2cm;
+}
 </style>
 </head>
 <body>
+  <div class="page">
+    <div class="date">${fecha}</div>
 
-<p style="text-align:right;">${fecha}</p>
+    <div class="title">INFORME DE RESIDENCIA</div>
 
-<h1>INFORME DE RESIDENCIA</h1>
+    <p>Por medio de la presente, informamos que:</p>
 
-<p>Por medio de la presente, informamos que:</p>
+    <p>
+      El Sr./Sra. <span class="bold">${form.vecinoNombre || "—"}</span>, identificado/a con DNI N°<span class="bold">${form.dni || "—"}</span>,
+      domiciliado en calle: <span class="bold">${form.domicilio || "—"}</span> ha manifestado residir en el inmueble sito en calle:
+      <span class="bold">${form.domicilio || "—"}</span>. Bº- <span class="bold">${form.barrio || "—"}</span>.
+    </p>
 
-<p>
-El Sr./Sra. <b>${form.vecinoNombre || "—"}</b>, identificado/a con DNI N° <b>${form.dni || "—"}</b>,
-domiciliado en calle: <b>${form.domicilio || "—"}</b> ha manifestado residir en el inmueble sito en calle:
-<b>${form.domicilio || "—"}</b>. Bº- <b>${form.barrio || "—"}</b>.
-</p>
+    <p>
+      La presente se expide a título estrictamente informativo, sin que implique certificación fehaciente ni genere responsabilidad u obligación legal alguna para quien la emite.
+    </p>
 
-<p>
-La presente se expide a título estrictamente informativo, sin que implique certificación fehaciente ni genere
-responsabilidad u obligación legal alguna para quien la emite.
-</p>
+    <p>
+      Personal de la oficina de Dir. de Regularización Dominial y Hábitat del Municipio, se ha constituido al domicilio y verifica que la sr/a:
+      <span class="bold">${form.vecinoNombre || "—"}</span> se encuentra allí y ese lugar sería su residencia.
+    </p>
 
-<p>
-Personal de la oficina de Dir. de Regularización Dominial y Hábitat del Municipio,
-se ha constituido al domicilio y verifica que el sr/a:
-<b>${form.vecinoNombre || "—"}</b> se encuentra allí y ese lugar sería su residencia.
-</p>
-
-<p>
-Este informe se emite ante el único y exclusivo fin de ser presentado ante: <b>${form.presentadoAnte || "_______________________________"}</b>
-</p>
-
+    <p>
+      Este informe se emite ante el único y exclusivo fin de ser presentado ante <span class="bold">${form.presentadoAnte || "_______________________________"}</span>. –
+    </p>
+  </div>
 </body>
 </html>
 `;
