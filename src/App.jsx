@@ -13,7 +13,7 @@ const PLANOS_BUCKET = "planos-expedientes";
 const PLANOS_TABLE = "expediente_planos";
 const CERTIFICADOS_TABLE = "certificados_residencia";
 const CERTIFICADOS_ARCHIVOS_TABLE = "certificado_residencia_archivos";
-const CERTIFICADOS_BUCKET = "certificados-residencia";
+const CERTIFICADOS_BUCKET = PLANOS_BUCKET;
 const MAX_PLANO_FILE_SIZE_MB = 50;
 const ALLOWED_PLANO_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv"];
 const ALLOWED_PLANO_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "xls", "xlsx", "csv"];
@@ -1402,200 +1402,9 @@ const CERTIFICADO_ESTADOS = {
   entregado: { label: "Entregado", bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
 };
 
-function CertificadosSection({
-  certificados,
-  archivosByCertificado,
-  canManageCertificados,
-  activeUser,
-  onCreate,
-  onSave,
-  onUploadFiles,
-  uploadingCertificadoId,
-}) {
-  const [nuevoOpen, setNuevoOpen] = useState(false);
-  const [selected, setSelected] = useState(null);
-  const [search, setSearch] = useState("");
-  const [estado, setEstado] = useState("");
 
-  const filtered = useMemo(() => {
-    const needle = toSearchable(search);
-    return (certificados || []).filter((cert) => {
-      const matchSearch = !needle || [
-        cert.numero,
-        cert.vecinoNombre,
-        cert.dni,
-        cert.domicilio,
-        cert.barrio,
-        cert.telefono,
-        cert.agenteNombre,
-        cert.observaciones,
-      ].some((value) => toSearchable(value).includes(needle));
-      const matchEstado = !estado || cert.estado === estado;
-      return matchSearch && matchEstado;
-    });
-  }, [certificados, search, estado]);
-
-  const stats = useMemo(() => ({
-    total: certificados.length,
-    pendientes: certificados.filter((cert) => cert.estado === "pendiente").length,
-    listos: certificados.filter((cert) => cert.estado === "listo" || cert.estado === "entregado").length,
-    conArchivos: certificados.filter((cert) => (archivosByCertificado[cert.id] || []).length > 0).length,
-  }), [certificados, archivosByCertificado]);
-
-  return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 22 }}>Certificados de residencia</h2>
-          <div style={{ color: C.muted, fontSize: 13, marginTop: 4 }}>Control de solicitudes, visitas, documentación e impresión.</div>
-        </div>
-        {canManageCertificados ? (
-          <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo certificado</button>
-        ) : null}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-        {[["Certificados", stats.total, "Solicitudes registradas"], ["Pendientes", stats.pendientes, "Requieren gestión"], ["Listos / entregados", stats.listos, "Proceso avanzado"], ["Con archivos", stats.conArchivos, "Documentación cargada"]].map(([label, value, note]) => (
-          <div key={label} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px 18px" }}>
-            <div style={{ fontSize: 11, color: C.muted }}>{label}</div>
-            <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}>{value}</div>
-            <div style={{ marginTop: 6, fontSize: 12, color: C.dim }}>{note}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
-        <div style={{ padding: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", borderBottom: `1px solid ${C.border}` }}>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar vecino, DNI, domicilio, barrio o certificado..."
-            style={{ ...inputStyle, flex: "1 1 420px", background: "#fff" }}
-          />
-          <select value={estado} onChange={(e) => setEstado(e.target.value)} style={{ ...inputStyle, width: 220, background: "#fff" }}>
-            <option value="">Todos los estados</option>
-            {Object.entries(CERTIFICADO_ESTADOS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-          </select>
-          <button onClick={() => { setSearch(""); setEstado(""); }} style={btnGhost}>Limpiar filtros</button>
-        </div>
-
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
-            <thead>
-              <tr style={{ background: "#f8fafc", color: C.dim, fontSize: 11, textTransform: "uppercase" }}>
-                {["N° certificado", "Vecino", "DNI", "Domicilio", "Barrio", "Estado", "Archivos", "Agente", "Acciones"].map((h) => (
-                  <th key={h} style={{ textAlign: "left", padding: "10px 12px", borderBottom: `1px solid ${C.border}` }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length ? filtered.map((cert) => {
-                const estadoCfg = CERTIFICADO_ESTADOS[cert.estado] || CERTIFICADO_ESTADOS.pendiente;
-                const archivos = archivosByCertificado[cert.id] || [];
-                return (
-                  <tr key={cert.id} style={{ borderBottom: `1px solid ${C.border}` }}>
-                    <td style={{ padding: "10px 12px", fontWeight: 700 }}>{cert.numero || "—"}</td>
-                    <td style={{ padding: "10px 12px" }}>{cert.vecinoNombre || "—"}</td>
-                    <td style={{ padding: "10px 12px" }}>{cert.dni || "—"}</td>
-                    <td style={{ padding: "10px 12px" }}>{cert.domicilio || "—"}</td>
-                    <td style={{ padding: "10px 12px" }}>{cert.barrio || "—"}</td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <span style={{ background: estadoCfg.bg, color: estadoCfg.color, border: `1px solid ${estadoCfg.border}`, borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 700 }}>{estadoCfg.label}</span>
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>{archivos.length}</td>
-                    <td style={{ padding: "10px 12px" }}>{cert.agenteNombre || "—"}</td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <button onClick={() => setSelected(cert)} style={{ ...btnPrimary, padding: "7px 12px", fontSize: 12 }}>Ver</button>
-                    </td>
-                  </tr>
-                );
-              }) : (
-                <tr>
-                  <td colSpan={9} style={{ padding: 24 }}>
-                    <EmptyBlock title="Sin certificados" text="Todavía no hay certificados cargados o no coinciden con los filtros." />
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {nuevoOpen ? (
-        <CertificadoModal
-          mode="new"
-          canManageCertificados={canManageCertificados}
-          activeUser={activeUser}
-          certificado={{
-            numero: nextCertificadoNumber(certificados),
-            vecinoNombre: "",
-            dni: "",
-            domicilio: "",
-            barrio: "",
-            padronCatastral: "",
-            telefono: "",
-            motivo: "Certificado de residencia",
-            presentadoAnte: "",
-            estado: "pendiente",
-            fechaVisita: "",
-            observaciones: "",
-            agenteNombre: activeUser?.nombre || "",
-          }}
-          archivos={[]}
-          uploading={false}
-          onClose={() => setNuevoOpen(false)}
-          onSave={async (payload) => {
-            const ok = await onCreate(payload);
-            if (ok) setNuevoOpen(false);
-          }}
-          onUploadFiles={() => {}}
-        />
-      ) : null}
-
-      {selected ? (
-        <CertificadoModal
-          mode="edit"
-          canManageCertificados={canManageCertificados}
-          activeUser={activeUser}
-          certificado={selected}
-          archivos={archivosByCertificado[selected.id] || []}
-          uploading={uploadingCertificadoId === String(selected.id)}
-          onClose={() => setSelected(null)}
-          onSave={async (payload) => {
-            const updated = await onSave(selected.id, payload);
-            if (updated) setSelected(updated);
-          }}
-          onUploadFiles={(files) => onUploadFiles(selected.id, files)}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function CertificadoModal({ mode, certificado, archivos, canManageCertificados, activeUser, uploading, onClose, onSave, onUploadFiles }) {
-  const [form, setForm] = useState(certificado);
-  const [localError, setLocalError] = useState("");
-
-  useEffect(() => {
-    setForm(certificado);
-    setLocalError("");
-  }, [certificado?.id, mode]);
-
-  const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
-
-  const submit = async () => {
-    setLocalError("");
-    if (!cleanText(form.vecinoNombre)) return setLocalError("Ingresá el nombre del vecino.");
-    if (!cleanText(form.dni)) return setLocalError("Ingresá el DNI.");
-    if (!cleanText(form.domicilio)) return setLocalError("Ingresá el domicilio.");
-    await onSave(form);
-  };
-
-  const printCertificado = () => {
-    const fecha = new Date().toLocaleDateString('es-AR');
-
-    const estadoCfg = CERTIFICADO_ESTADOS[form.estado] || CERTIFICADO_ESTADOS.pendiente;
-    const html = `
+function buildCertificadoPrintHtml(form, fecha, logoMunicipio, logoAreaPrint) {
+  return `
 <html>
 <head>
 <title>${form.numero || "Informe de residencia"}</title>
@@ -1730,9 +1539,262 @@ p {
       </p>
     </div>
   </div>
+  <script>
+    window.onload = function() {
+      window.print();
+    };
+  </script>
 </body>
 </html>
 `;
+}
+
+function CertificadosSection({
+  certificados,
+  archivosByCertificado,
+  canManageCertificados,
+  activeUser,
+  onCreate,
+  onSave,
+  onUploadFiles,
+  uploadingCertificadoId,
+}) {
+  const [nuevoOpen, setNuevoOpen] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [selectedCertificados, setSelectedCertificados] = useState([]);
+  const [search, setSearch] = useState("");
+  const [estado, setEstado] = useState("");
+
+  const filtered = useMemo(() => {
+    const needle = toSearchable(search);
+    return (certificados || []).filter((cert) => {
+      const matchSearch = !needle || [
+        cert.numero,
+        cert.vecinoNombre,
+        cert.dni,
+        cert.domicilio,
+        cert.barrio,
+        cert.telefono,
+        cert.agenteNombre,
+        cert.observaciones,
+      ].some((value) => toSearchable(value).includes(needle));
+      const matchEstado = !estado || cert.estado === estado;
+      return matchSearch && matchEstado;
+    });
+  }, [certificados, search, estado]);
+
+  const stats = useMemo(() => ({
+    total: certificados.length,
+    pendientes: certificados.filter((cert) => cert.estado === "pendiente").length,
+    listos: certificados.filter((cert) => cert.estado === "listo" || cert.estado === "entregado").length,
+    conArchivos: certificados.filter((cert) => (archivosByCertificado[cert.id] || []).length > 0).length,
+  }), [certificados, archivosByCertificado]);
+
+  const toggleSelectedCertificado = (certificadoId) => {
+    setSelectedCertificados((prev) => (
+      prev.includes(certificadoId)
+        ? prev.filter((id) => id !== certificadoId)
+        : [...prev, certificadoId]
+    ));
+  };
+
+  const toggleAllVisibleCertificados = () => {
+    const visibleIds = filtered.map((cert) => cert.id).filter(Boolean);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedCertificados.includes(id));
+    setSelectedCertificados((prev) => {
+      if (allSelected) return prev.filter((id) => !visibleIds.includes(id));
+      return Array.from(new Set([...prev, ...visibleIds]));
+    });
+  };
+
+  const printSelectedCertificados = () => {
+    const selectedRows = certificados.filter((cert) => selectedCertificados.includes(cert.id));
+    if (!selectedRows.length) return;
+    selectedRows.forEach((cert, index) => {
+      setTimeout(() => {
+        const temp = { ...cert };
+        const fecha = new Date().toLocaleDateString('es-AR');
+        const logoMunicipio = `${window.location.origin}/logo-icono.png`;
+        const logoAreaPrint = logoArea;
+        const html = buildCertificadoPrintHtml(temp, fecha, logoMunicipio, logoAreaPrint);
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+        }
+      }, index * 250);
+    });
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 22 }}>Certificados de residencia</h2>
+          <div style={{ color: C.muted, fontSize: 13, marginTop: 4 }}>Control de solicitudes, visitas, documentación e impresión.</div>
+        </div>
+        {canManageCertificados ? (
+          <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo certificado</button>
+        ) : null}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        {[["Certificados", stats.total, "Solicitudes registradas"], ["Pendientes", stats.pendientes, "Requieren gestión"], ["Listos / entregados", stats.listos, "Proceso avanzado"], ["Con archivos", stats.conArchivos, "Documentación cargada"]].map(([label, value, note]) => (
+          <div key={label} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px 18px" }}>
+            <div style={{ fontSize: 11, color: C.muted }}>{label}</div>
+            <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}>{value}</div>
+            <div style={{ marginTop: 6, fontSize: 12, color: C.dim }}>{note}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
+        <div style={{ padding: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", borderBottom: `1px solid ${C.border}` }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar vecino, DNI, domicilio, barrio o certificado..."
+            style={{ ...inputStyle, flex: "1 1 420px", background: "#fff" }}
+          />
+          <select value={estado} onChange={(e) => setEstado(e.target.value)} style={{ ...inputStyle, width: 220, background: "#fff" }}>
+            <option value="">Todos los estados</option>
+            {Object.entries(CERTIFICADO_ESTADOS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
+          </select>
+          <button onClick={() => { setSearch(""); setEstado(""); }} style={btnGhost}>Limpiar filtros</button>
+          <button onClick={toggleAllVisibleCertificados} style={btnGhost}>Seleccionar visibles</button>
+          <button
+            onClick={printSelectedCertificados}
+            disabled={!selectedCertificados.length}
+            style={{ ...btnPrimary, opacity: selectedCertificados.length ? 1 : 0.55, cursor: selectedCertificados.length ? "pointer" : "not-allowed" }}
+          >
+            Imprimir seleccionados
+          </button>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+            <thead>
+              <tr style={{ background: "#f8fafc", color: C.dim, fontSize: 11, textTransform: "uppercase" }}>
+                {["✓", "N° certificado", "Vecino", "DNI", "Domicilio", "Barrio", "Estado", "Archivos", "Agente", "Acciones"].map((h) => (
+                  <th key={h} style={{ textAlign: "left", padding: "10px 12px", borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length ? filtered.map((cert) => {
+                const estadoCfg = CERTIFICADO_ESTADOS[cert.estado] || CERTIFICADO_ESTADOS.pendiente;
+                const archivos = archivosByCertificado[cert.id] || [];
+                return (
+                  <tr key={cert.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <td style={{ padding: "10px 12px" }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedCertificados.includes(cert.id)}
+                        onChange={() => toggleSelectedCertificado(cert.id)}
+                      />
+                    </td>
+                    <td style={{ padding: "10px 12px", fontWeight: 700 }}>{cert.numero || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.vecinoNombre || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.dni || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.domicilio || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.barrio || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <span style={{ background: estadoCfg.bg, color: estadoCfg.color, border: `1px solid ${estadoCfg.border}`, borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 700 }}>{estadoCfg.label}</span>
+                    </td>
+                    <td style={{ padding: "10px 12px" }}>{archivos.length}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.agenteNombre || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <button onClick={() => setSelected(cert)} style={{ ...btnPrimary, padding: "7px 12px", fontSize: 12 }}>Ver</button>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={10} style={{ padding: 24 }}>
+                    <EmptyBlock title="Sin certificados" text="Todavía no hay certificados cargados o no coinciden con los filtros." />
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {nuevoOpen ? (
+        <CertificadoModal
+          mode="new"
+          canManageCertificados={canManageCertificados}
+          activeUser={activeUser}
+          certificado={{
+            numero: nextCertificadoNumber(certificados),
+            vecinoNombre: "",
+            dni: "",
+            domicilio: "",
+            barrio: "",
+            padronCatastral: "",
+            telefono: "",
+            motivo: "Certificado de residencia",
+            presentadoAnte: "",
+            estado: "pendiente",
+            fechaVisita: "",
+            observaciones: "",
+            agenteNombre: activeUser?.nombre || "",
+          }}
+          archivos={[]}
+          uploading={false}
+          onClose={() => setNuevoOpen(false)}
+          onSave={async (payload) => {
+            const ok = await onCreate(payload);
+            if (ok) setNuevoOpen(false);
+          }}
+          onUploadFiles={() => {}}
+        />
+      ) : null}
+
+      {selected ? (
+        <CertificadoModal
+          mode="edit"
+          canManageCertificados={canManageCertificados}
+          activeUser={activeUser}
+          certificado={selected}
+          archivos={archivosByCertificado[selected.id] || []}
+          uploading={uploadingCertificadoId === String(selected.id)}
+          onClose={() => setSelected(null)}
+          onSave={async (payload) => {
+            const updated = await onSave(selected.id, payload);
+            if (updated) setSelected(updated);
+          }}
+          onUploadFiles={(files) => onUploadFiles(selected.id, files)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CertificadoModal({ mode, certificado, archivos, canManageCertificados, activeUser, uploading, onClose, onSave, onUploadFiles }) {
+  const [form, setForm] = useState(certificado);
+  const [localError, setLocalError] = useState("");
+
+  useEffect(() => {
+    setForm(certificado);
+    setLocalError("");
+  }, [certificado?.id, mode]);
+
+  const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const submit = async () => {
+    setLocalError("");
+    if (!cleanText(form.vecinoNombre)) return setLocalError("Ingresá el nombre del vecino.");
+    if (!cleanText(form.dni)) return setLocalError("Ingresá el DNI.");
+    if (!cleanText(form.domicilio)) return setLocalError("Ingresá el domicilio.");
+    await onSave(form);
+  };
+
+  const printCertificado = () => {
+    const fecha = new Date().toLocaleDateString('es-AR');
+    const logoMunicipio = `${window.location.origin}/logo-icono.png`;
+    const logoAreaPrint = logoArea;
+    const html = buildCertificadoPrintHtml(form, fecha, logoMunicipio, logoAreaPrint);
     const win = window.open("", "_blank");
     if (win) {
       win.document.write(html);
@@ -2877,7 +2939,12 @@ export default function App() {
     }
 
     const normalized = normalizeCertificadoRecord(inserted);
-    setCertificados((prev) => [normalized, ...prev]);
+    const reloadResult = await fetchCertificados();
+    if (!reloadResult.error) {
+      setCertificados(reloadResult.data || [normalized]);
+    } else {
+      setCertificados((prev) => [normalized, ...prev]);
+    }
     setNotice("Certificado guardado correctamente.");
     return true;
   }
@@ -3621,7 +3688,7 @@ export default function App() {
           <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, padding: "12px clamp(14px, 1.8vw, 24px)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%", boxSizing: "border-box" }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 700 }}>{activeNav}</div>
-              <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Dirección de Regularización Dominial • Base conectada a Supabase</div>
+              <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Dirección de Regularización Dominial • </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
