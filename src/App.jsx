@@ -1926,6 +1926,19 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {canManageCertificados ? <button onClick={submit} style={btnPrimary}>Guardar certificado</button> : null}
               <button onClick={printCertificado} style={btnGhost}>Imprimir certificado</button>
+              {canManageCertificados ? (
+                <button
+                  onClick={() => {
+                    if (confirm("¿Eliminar este certificado?")) {
+                      deleteCertificado(form.id);
+                      onClose();
+                    }
+                  }}
+                  style={{ ...btnGhost, color: "#dc2626" }}
+                >
+                  Eliminar
+                </button>
+              ) : null}
             </div>
             <button onClick={onClose} style={btnGhost}>Cerrar</button>
           </div>
@@ -2992,7 +3005,28 @@ export default function App() {
     return normalized;
   }
 
-  async function uploadCertificadoFiles(certificadoId, files) {
+  
+  async function deleteCertificado(certificadoId) {
+    if (!supabase || !canManageCertificados || !certificadoId) return false;
+    setError("");
+    setNotice("");
+
+    const { error } = await supabase
+      .from(CERTIFICADOS_TABLE)
+      .delete()
+      .eq("id", certificadoId);
+
+    if (error) {
+      setError("No se pudo eliminar el certificado: " + error.message);
+      return false;
+    }
+
+    setCertificados((prev) => prev.filter((c) => c.id !== certificadoId));
+    setNotice("Certificado eliminado correctamente.");
+    return true;
+  }
+
+async function uploadCertificadoFiles(certificadoId, files) {
     if (!supabase || !canManageCertificados || !certificadoId || !files?.length) return;
     const invalidFile = files.find((file) => !isAllowedPlanoFile(file));
     if (invalidFile) {
@@ -3044,6 +3078,7 @@ export default function App() {
       }
 
       const refreshed = await fetchCertificadoArchivosIndex([certificadoId]);
+      setNotice("Archivos subidos correctamente.");
       if (refreshed.error) throw new Error(refreshed.error.message);
       setArchivosByCertificado((prev) => ({ ...prev, [certificadoId]: refreshed.data[certificadoId] || [] }));
       setNotice("Documentación cargada correctamente.");
