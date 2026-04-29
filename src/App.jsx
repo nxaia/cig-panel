@@ -527,6 +527,7 @@ function normalizeCertificadoRecord(row) {
     dni: row.dni || "",
     domicilio: row.domicilio || "",
     barrio: row.barrio || "",
+    padronCatastral: row.padron_catastral || "",
     telefono: row.telefono || "",
     motivo: row.motivo || "",
     presentadoAnte: row.presentado_ante || "",
@@ -1531,6 +1532,7 @@ function CertificadosSection({
             dni: "",
             domicilio: "",
             barrio: "",
+            padronCatastral: "",
             telefono: "",
             motivo: "Certificado de residencia",
             presentadoAnte: "",
@@ -1600,75 +1602,133 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
 <style>
 @page {
   size: A4;
-  margin: 2.5cm 2.2cm 2.2cm 2.2cm;
+  margin: 1.5cm 1.6cm 1.6cm 1.6cm;
 }
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 body {
   margin: 0;
   background: #fff;
   color: #000;
-  font-family: "Times New Roman", Times, serif;
+  font-family: Arial, Helvetica, sans-serif;
   font-size: 12pt;
-  line-height: 1.45;
+  line-height: 1.35;
 }
 .page {
   width: 100%;
-  max-width: 17cm;
+  max-width: 18cm;
   margin: 0 auto;
-  padding-top: 2.2cm;
+}
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-top: 0.4cm;
+  margin-bottom: 2.1cm;
+}
+.logo-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-left img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+.logo-left-text {
+  color: #9ca3af;
+  font-size: 19px;
+  line-height: 1.05;
+  font-weight: 700;
+}
+.logo-left-text .city {
+  font-size: 22px;
+}
+.logo-right {
+  text-align: center;
+}
+.logo-right img {
+  width: 138px;
+  height: auto;
+  object-fit: contain;
 }
 .date {
   text-align: right;
-  margin-bottom: 1.1cm;
+  font-size: 12pt;
+  margin-bottom: 1.05cm;
 }
 .title {
   text-align: center;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 15pt;
-  font-weight: 700;
-  margin: 0 0 1cm 0;
-  letter-spacing: .2px;
+  font-size: 12pt;
+  font-style: italic;
+  text-decoration: underline;
+  font-weight: 400;
+  margin: 0 0 0.7cm 0;
+}
+.content {
+  width: 15.4cm;
+  margin-left: 0.25cm;
 }
 p {
-  margin: 0 0 10pt 0;
-  text-align: left;
+  margin: 0 0 12pt 0;
+  text-align: justify;
 }
-.bold {
+.indent {
+  text-indent: 1.1cm;
+}
+.important {
   font-weight: 700;
+  text-transform: uppercase;
 }
-.spacer {
-  height: 1.2cm;
+@media print {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }
 </style>
 </head>
 <body>
   <div class="page">
+    <div class="header">
+      <div class="logo-left">
+        <img src="${logoMunicipio}" />
+        <div class="logo-left-text">
+          <div>Municipalidad</div>
+          <div class="city">Banda del Río Salí</div>
+        </div>
+      </div>
+      <div class="logo-right">
+        <img src="${logoAreaPrint}" />
+      </div>
+    </div>
+
     <div class="date">${fecha}</div>
 
     <div class="title">INFORME DE RESIDENCIA</div>
 
-    <p>Por medio de la presente, informamos que:</p>
+    <div class="content">
+      <p>Por medio de la presente, informamos que:</p>
 
-    <p>
-      El Sr./Sra. <span class="bold">${form.vecinoNombre || "—"}</span>, identificado/a con DNI N°<span class="bold">${form.dni || "—"}</span>,
-      domiciliado en calle: <span class="bold">${form.domicilio || "—"}</span> ha manifestado residir en el inmueble sito en calle:
-      <span class="bold">${form.domicilio || "—"}</span>. Bº- <span class="bold">${form.barrio || "—"}</span>.
-    </p>
+      <p class="indent">
+        El Sr./Sra. <span class="important">${form.vecinoNombre || "—"}</span>, identificado/a con DNI N°<span class="important">${form.dni || "—"}</span>,
+        domiciliado en calle: <span class="important">${form.domicilio || "—"}</span> ha manifestado residir en el inmueble sito en calle:
+        <span class="important">${form.domicilio || "—"}</span>. Bº- <span class="important">${form.barrio || "—"}</span>${form.padronCatastral ? `. PADRÓN CATASTRAL: <span class="important">${form.padronCatastral}</span>.` : "."}
+      </p>
 
-    <p>
-      La presente se expide a título estrictamente informativo, sin que implique certificación fehaciente ni genere responsabilidad u obligación legal alguna para quien la emite.
-    </p>
+      <p class="indent">
+        La presente se expide a título estrictamente informativo, sin que implique certificación fehaciente ni genere responsabilidad u obligación legal alguna para quien la emite.
+      </p>
 
-    <p>
-      Personal de la oficina de Dir. de Regularización Dominial y Hábitat del Municipio, se ha constituido al domicilio y verifica que la sr/a:
-      <span class="bold">${form.vecinoNombre || "—"}</span> se encuentra allí y ese lugar sería su residencia.
-    </p>
+      <p class="indent">
+        Personal de la oficina de Dir. de Regularización Dominial y Hábitat del Municipio, se ha constituido al domicilio y verifica que la sr/a:
+        <span class="important">${form.vecinoNombre || "—"}</span> se encuentra allí y ese lugar sería su residencia.
+      </p>
 
-    <p>
-      Este informe se emite ante el único y exclusivo fin de ser presentado ante <span class="bold">${form.presentadoAnte || "_______________________________"}</span>. –
-    </p>
+      <p class="indent">
+        Este informe se emite ante el único y exclusivo fin de ser presentado ante <span>${form.presentadoAnte || "_______________________________"}</span>. –
+      </p>
+    </div>
   </div>
 </body>
 </html>
@@ -1720,6 +1780,10 @@ p {
             <div>
               <div style={labelStyle}>Barrio</div>
               <input value={form.barrio || ""} disabled={!canManageCertificados} onChange={(e) => set("barrio", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Padrón catastral</div>
+              <input value={form.padronCatastral || ""} disabled={!canManageCertificados} onChange={(e) => set("padronCatastral", e.target.value)} style={inputStyle} />
             </div>
             <div>
               <div style={labelStyle}>Teléfono/contacto</div>
@@ -2788,6 +2852,7 @@ export default function App() {
       dni: cleanText(payload.dni),
       domicilio: cleanText(payload.domicilio),
       barrio: cleanText(payload.barrio),
+      padron_catastral: cleanText(payload.padronCatastral),
       telefono: normalizePhone(payload.telefono),
       motivo: cleanText(payload.motivo) || "Certificado de residencia",
       presentado_ante: cleanText(payload.presentadoAnte),
@@ -2829,6 +2894,7 @@ export default function App() {
       dni: cleanText(payload.dni),
       domicilio: cleanText(payload.domicilio),
       barrio: cleanText(payload.barrio),
+      padron_catastral: cleanText(payload.padronCatastral),
       telefono: normalizePhone(payload.telefono),
       motivo: cleanText(payload.motivo) || "Certificado de residencia",
       presentado_ante: cleanText(payload.presentadoAnte),
