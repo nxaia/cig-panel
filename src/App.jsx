@@ -1556,8 +1556,11 @@ function CertificadosSection({
   activeUser,
   onCreate,
   onSave,
+  onDelete,
   onUploadFiles,
+  onDeleteFile,
   uploadingCertificadoId,
+  deletingCertificadoFileId,
 }) {
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -1704,7 +1707,21 @@ function CertificadosSection({
                     <td style={{ padding: "10px 12px" }}>{archivos.length}</td>
                     <td style={{ padding: "10px 12px" }}>{cert.agenteNombre || "—"}</td>
                     <td style={{ padding: "10px 12px" }}>
-                      <button onClick={() => setSelected(cert)} style={{ ...btnPrimary, padding: "7px 12px", fontSize: 12 }}>Ver</button>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button onClick={() => setSelected(cert)} style={{ ...btnPrimary, padding: "7px 12px", fontSize: 12 }}>Ver</button>
+                        {canManageCertificados ? (
+                          <button
+                            onClick={async () => {
+                              if (!confirm("¿Eliminar este certificado?")) return;
+                              const ok = await onDelete(cert.id);
+                              if (ok && selected?.id === cert.id) setSelected(null);
+                            }}
+                            style={{ ...btnGhost, padding: "7px 12px", fontSize: 12, color: C.red, borderColor: "#fecaca" }}
+                          >
+                            Eliminar
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1764,14 +1781,20 @@ function CertificadosSection({
             const updated = await onSave(selected.id, payload);
             if (updated) setSelected(updated);
           }}
+          onDelete={async () => {
+            const ok = await onDelete(selected.id);
+            if (ok) setSelected(null);
+          }}
           onUploadFiles={(files) => onUploadFiles(selected.id, files)}
+          onDeleteFile={(file) => onDeleteFile(selected.id, file)}
+          deletingFileId={deletingCertificadoFileId}
         />
       ) : null}
     </div>
   );
 }
 
-function CertificadoModal({ mode, certificado, archivos, canManageCertificados, activeUser, uploading, onClose, onSave, onUploadFiles }) {
+function CertificadoModal({ mode, certificado, archivos, canManageCertificados, activeUser, uploading, onClose, onSave, onDelete, onUploadFiles, onDeleteFile, deletingFileId }) {
   const [form, setForm] = useState(certificado);
   const [localError, setLocalError] = useState("");
 
@@ -1910,7 +1933,22 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
                           {file.createdAt ? `Cargado: ${formatDateTime(file.createdAt)}` : "Cargado: sin fecha"} • Peso: {file.tamanoBytes ? formatFileSize(file.tamanoBytes) : "no registrado"}
                         </div>
                       </div>
-                      <a href={file.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none" }}>Abrir</a>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <a href={file.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none" }}>Abrir</a>
+                        {canManageCertificados ? (
+                          <button
+                            type="button"
+                            disabled={deletingFileId === String(file.id)}
+                            onClick={() => {
+                              if (!confirm("¿Eliminar este archivo?")) return;
+                              onDeleteFile(file);
+                            }}
+                            style={{ ...btnGhost, padding: "6px 10px", fontSize: 12, color: C.red, borderColor: "#fecaca", opacity: deletingFileId === String(file.id) ? 0.6 : 1 }}
+                          >
+                            {deletingFileId === String(file.id) ? "Eliminando..." : "Eliminar"}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1926,17 +1964,15 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {canManageCertificados ? <button onClick={submit} style={btnPrimary}>Guardar certificado</button> : null}
               <button onClick={printCertificado} style={btnGhost}>Imprimir certificado</button>
-              {canManageCertificados ? (
+              {mode === "edit" && canManageCertificados ? (
                 <button
-                  onClick={() => {
-                    if (confirm("¿Eliminar este certificado?")) {
-                      deleteCertificado(form.id);
-                      onClose();
-                    }
+                  onClick={async () => {
+                    if (!confirm("¿Eliminar este certificado?")) return;
+                    await onDelete();
                   }}
-                  style={{ ...btnGhost, color: "#dc2626" }}
+                  style={{ ...btnGhost, color: C.red, borderColor: "#fecaca" }}
                 >
-                  Eliminar
+                  Eliminar certificado
                 </button>
               ) : null}
             </div>
@@ -2503,6 +2539,7 @@ export default function App() {
   const [certificados, setCertificados] = useState([]);
   const [archivosByCertificado, setArchivosByCertificado] = useState({});
   const [uploadingCertificadoId, setUploadingCertificadoId] = useState("");
+  const [deletingCertificadoFileId, setDeletingCertificadoFileId] = useState("");
   const [observacionesByExpediente, setObservacionesByExpediente] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeNav, setActiveNav] = useState("Dashboard");
@@ -3005,28 +3042,79 @@ export default function App() {
     return normalized;
   }
 
-  
+
   async function deleteCertificado(certificadoId) {
     if (!supabase || !canManageCertificados || !certificadoId) return false;
+    setSaving(true);
     setError("");
     setNotice("");
 
-    const { error } = await supabase
+    const { error: deleteError } = await supabase
       .from(CERTIFICADOS_TABLE)
       .delete()
       .eq("id", certificadoId);
 
-    if (error) {
-      setError("No se pudo eliminar el certificado: " + error.message);
+    setSaving(false);
+
+    if (deleteError) {
+      setError(`No se pudo eliminar el certificado: ${deleteError.message}`);
       return false;
     }
 
-    setCertificados((prev) => prev.filter((c) => c.id !== certificadoId));
+    setCertificados((prev) => prev.filter((cert) => cert.id !== certificadoId));
+    setArchivosByCertificado((prev) => {
+      const next = { ...prev };
+      delete next[certificadoId];
+      return next;
+    });
     setNotice("Certificado eliminado correctamente.");
     return true;
   }
 
-async function uploadCertificadoFiles(certificadoId, files) {
+  async function deleteCertificadoFile(certificadoId, file) {
+    if (!supabase || !canManageCertificados || !certificadoId || !file?.id) return false;
+    setDeletingCertificadoFileId(String(file.id));
+    setError("");
+    setNotice("");
+
+    try {
+      if (file.archivoPath) {
+        const { error: storageError } = await supabase.storage
+          .from(CERTIFICADOS_BUCKET)
+          .remove([file.archivoPath]);
+
+        if (storageError) {
+          throw new Error(`No se pudo eliminar el archivo del storage: ${storageError.message}`);
+        }
+      }
+
+      const { error: deleteError } = await supabase
+        .from(CERTIFICADOS_ARCHIVOS_TABLE)
+        .delete()
+        .eq("id", file.id);
+
+      if (deleteError) {
+        throw new Error(`No se pudo eliminar el registro del archivo: ${deleteError.message}`);
+      }
+
+      const refreshed = await fetchCertificadoArchivosIndex([certificadoId]);
+      if (refreshed.error) throw new Error(refreshed.error.message);
+
+      setArchivosByCertificado((prev) => ({
+        ...prev,
+        [certificadoId]: refreshed.data[certificadoId] || [],
+      }));
+      setNotice("Archivo eliminado correctamente.");
+      return true;
+    } catch (err) {
+      setError(err.message || "No se pudo eliminar el archivo.");
+      return false;
+    } finally {
+      setDeletingCertificadoFileId("");
+    }
+  }
+
+  async function uploadCertificadoFiles(certificadoId, files) {
     if (!supabase || !canManageCertificados || !certificadoId || !files?.length) return;
     const invalidFile = files.find((file) => !isAllowedPlanoFile(file));
     if (invalidFile) {
@@ -3078,10 +3166,9 @@ async function uploadCertificadoFiles(certificadoId, files) {
       }
 
       const refreshed = await fetchCertificadoArchivosIndex([certificadoId]);
-      setNotice("Archivos subidos correctamente.");
       if (refreshed.error) throw new Error(refreshed.error.message);
       setArchivosByCertificado((prev) => ({ ...prev, [certificadoId]: refreshed.data[certificadoId] || [] }));
-      setNotice("Documentación cargada correctamente.");
+      setNotice("Archivo/documentación cargada correctamente.");
     } catch (err) {
       setError(err.message || "No se pudieron subir los archivos del certificado.");
     } finally {
@@ -3787,8 +3874,11 @@ async function uploadCertificadoFiles(certificadoId, files) {
                 activeUser={activeUser}
                 onCreate={createCertificado}
                 onSave={saveCertificado}
+                onDelete={deleteCertificado}
                 onUploadFiles={uploadCertificadoFiles}
+                onDeleteFile={deleteCertificadoFile}
                 uploadingCertificadoId={uploadingCertificadoId}
+                deletingCertificadoFileId={deletingCertificadoFileId}
               />
             ) : activeNav === "Importar Excel" ? (
               <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}`, padding: 22 }}>
