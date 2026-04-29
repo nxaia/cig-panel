@@ -529,6 +529,7 @@ function normalizeCertificadoRecord(row) {
     barrio: row.barrio || "",
     telefono: row.telefono || "",
     motivo: row.motivo || "",
+    presentadoAnte: row.presentado_ante || "",
     estado: row.estado || "pendiente",
     fechaVisita: row.fecha_visita || "",
     observaciones: row.observaciones || "",
@@ -1532,6 +1533,7 @@ function CertificadosSection({
             barrio: "",
             telefono: "",
             motivo: "Certificado de residencia",
+            presentadoAnte: "",
             estado: "pendiente",
             fechaVisita: "",
             observaciones: "",
@@ -1588,58 +1590,51 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
   };
 
   const printCertificado = () => {
+    const fecha = new Date().toLocaleDateString('es-AR');
+
     const estadoCfg = CERTIFICADO_ESTADOS[form.estado] || CERTIFICADO_ESTADOS.pendiente;
     const html = `
-      <html>
-        <head>
-          <title>${form.numero || "Certificado de residencia"}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 40px; color: #111827; }
-            .header { text-align: center; border-bottom: 2px solid #0ea5e9; padding-bottom: 18px; margin-bottom: 36px; }
-            .municipio { font-size: 12px; letter-spacing: 3px; color: #64748b; font-weight: 700; }
-            h1 { font-size: 24px; margin: 8px 0 0; }
-            h2 { font-size: 20px; margin: 24px 0 16px; text-align: center; text-transform: uppercase; }
-            .box { border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin: 18px 0; }
-            .row { margin: 10px 0; font-size: 15px; }
-            .label { font-weight: 700; color: #334155; }
-            .firma { margin-top: 80px; display: flex; justify-content: space-between; gap: 80px; }
-            .firma div { flex: 1; text-align: center; border-top: 1px solid #111827; padding-top: 8px; }
-            .small { color: #64748b; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="municipio">MUNICIPALIDAD DE</div>
-            <h1>Banda del Río Salí</h1>
-            <div class="small">Dirección de Regularización Dominial y Hábitat</div>
-          </div>
-          <h2>Certificado de residencia</h2>
-          <div class="box">
-            <div class="row"><span class="label">N° certificado:</span> ${form.numero || "—"}</div>
-            <div class="row"><span class="label">Nombre y apellido:</span> ${form.vecinoNombre || "—"}</div>
-            <div class="row"><span class="label">DNI:</span> ${form.dni || "—"}</div>
-            <div class="row"><span class="label">Domicilio:</span> ${form.domicilio || "—"}</div>
-            <div class="row"><span class="label">Barrio:</span> ${form.barrio || "—"}</div>
-            <div class="row"><span class="label">Motivo:</span> ${form.motivo || "Certificado de residencia"}</div>
-            <div class="row"><span class="label">Estado:</span> ${estadoCfg.label}</div>
-            <div class="row"><span class="label">Agente interviniente:</span> ${form.agenteNombre || activeUser?.nombre || "—"}</div>
-          </div>
-          <p>
-            Por medio de la presente se deja constancia de los datos declarados y relevados para la solicitud de certificado de residencia,
-            quedando sujeto a la documentación respaldatoria adjunta y a la verificación correspondiente por el área competente.
-          </p>
-          <div class="box">
-            <div class="row"><span class="label">Observaciones:</span></div>
-            <div>${form.observaciones || "Sin observaciones."}</div>
-          </div>
-          <div class="firma">
-            <div>Agente de campo</div>
-            <div>Autoridad competente</div>
-          </div>
-          <script>window.print();</script>
-        </body>
-      </html>
-    `;
+<html>
+<head>
+<title>${form.numero || "Informe de residencia"}</title>
+<style>
+body { font-family: Arial, sans-serif; padding: 60px; line-height: 1.6; color: #000; }
+h1 { text-align: center; font-size: 22px; margin-bottom: 30px; }
+p { margin: 12px 0; font-size: 15px; }
+</style>
+</head>
+<body>
+
+<p style="text-align:right;">${fecha}</p>
+
+<h1>INFORME DE RESIDENCIA</h1>
+
+<p>Por medio de la presente, informamos que:</p>
+
+<p>
+El Sr./Sra. <b>${form.vecinoNombre || "—"}</b>, identificado/a con DNI N° <b>${form.dni || "—"}</b>,
+domiciliado en calle: <b>${form.domicilio || "—"}</b> ha manifestado residir en el inmueble sito en calle:
+<b>${form.domicilio || "—"}</b>. Bº- <b>${form.barrio || "—"}</b>.
+</p>
+
+<p>
+La presente se expide a título estrictamente informativo, sin que implique certificación fehaciente ni genere
+responsabilidad u obligación legal alguna para quien la emite.
+</p>
+
+<p>
+Personal de la oficina de Dir. de Regularización Dominial y Hábitat del Municipio,
+se ha constituido al domicilio y verifica que el sr/a:
+<b>${form.vecinoNombre || "—"}</b> se encuentra allí y ese lugar sería su residencia.
+</p>
+
+<p>
+Este informe se emite ante el único y exclusivo fin de ser presentado ante: <b>${form.presentadoAnte || "_______________________________"}</b>
+</p>
+
+</body>
+</html>
+`;
     const win = window.open("", "_blank");
     if (win) {
       win.document.write(html);
@@ -1699,6 +1694,10 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
             <div>
               <div style={labelStyle}>Motivo</div>
               <input value={form.motivo || ""} disabled={!canManageCertificados} onChange={(e) => set("motivo", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Presentado ante</div>
+              <input value={form.presentadoAnte || ""} disabled={!canManageCertificados} onChange={(e) => set("presentadoAnte", e.target.value)} placeholder="Ej: Sra. concejal Medina, Claudia" style={inputStyle} />
             </div>
             <div>
               <div style={labelStyle}>Agente</div>
@@ -2753,6 +2752,7 @@ export default function App() {
       barrio: cleanText(payload.barrio),
       telefono: normalizePhone(payload.telefono),
       motivo: cleanText(payload.motivo) || "Certificado de residencia",
+      presentado_ante: cleanText(payload.presentadoAnte),
       estado: cleanText(payload.estado) || "pendiente",
       fecha_visita: payload.fechaVisita || null,
       observaciones: cleanText(payload.observaciones),
@@ -2793,6 +2793,7 @@ export default function App() {
       barrio: cleanText(payload.barrio),
       telefono: normalizePhone(payload.telefono),
       motivo: cleanText(payload.motivo) || "Certificado de residencia",
+      presentado_ante: cleanText(payload.presentadoAnte),
       estado: cleanText(payload.estado) || "pendiente",
       fecha_visita: payload.fechaVisita || null,
       observaciones: cleanText(payload.observaciones),
