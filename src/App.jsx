@@ -152,18 +152,35 @@ const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
 const TABLE_COLGROUP = [
   { key: "check", width: "36px" },
   { key: "expediente", width: "118px" },
-  { key: "titular", width: "190px" },
-  { key: "dni", width: "92px" },
-  { key: "contacto", width: "108px" },
+  { key: "titular", width: "220px" },
+  { key: "dni", width: "100px" },
+  { key: "contacto", width: "118px" },
   { key: "estadoCivil", width: "120px" },
-  { key: "barrio", width: "170px" },
-  { key: "padron", width: "100px" },
-  { key: "archivos", width: "150px" },
-  { key: "estado", width: "118px" },
-  { key: "area", width: "96px" },
-  { key: "responsable", width: "116px" },
-  { key: "notas", width: "150px" },
-  { key: "acciones", width: "96px" },
+  { key: "barrio", width: "190px" },
+  { key: "padron", width: "98px" },
+  { key: "archivos", width: "145px" },
+  { key: "estado", width: "112px" },
+  { key: "area", width: "110px" },
+  { key: "responsable", width: "126px" },
+  { key: "notas", width: "210px" },
+  { key: "acciones", width: "98px" },
+];
+
+const EXPEDIENTES_TABLE_HEADERS = [
+  "✓",
+  "N° Expediente",
+  "Titular",
+  "DNI",
+  "Contacto",
+  "Estado civil",
+  "Barrio",
+  "N° de padrón",
+  "Archivos",
+  "Estado",
+  "Área",
+  "Responsable",
+  "Notas",
+  "Acciones",
 ];
 
 
@@ -780,6 +797,17 @@ function buildDuplicateKey({ titular, padronNumero }) {
   if (!normalizedTitular || !normalizedPadron) return "";
   return `${normalizedTitular}__${normalizedPadron}`;
 }
+
+function findDuplicatePadron(records = [], padronNumero, excludeId = null) {
+  const target = normalizePadron(padronNumero);
+  if (!target) return null;
+  return (records || []).find((row) => {
+    if (!row) return false;
+    if (excludeId !== null && String(row.id) === String(excludeId)) return false;
+    return normalizePadron(row.padronNumero ?? row.padron_numero) === target;
+  }) || null;
+}
+
 
 function getDuplicateSignature(row) {
   const dni = normalizeDni(row?.dni);
@@ -2080,7 +2108,7 @@ function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, on
   );
 }
 
-function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [], onNext, modalIndex = 0, modalTotal = 0, activeUser, observacionesIntendente = [], onAddObservacionIntendente, addingObservacionIntendente }) {
+function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [], onNext, modalIndex = 0, modalTotal = 0, activeUser, observacionesIntendente = [], onAddObservacionIntendente, addingObservacionIntendente, existingExpedientes = [], onDuplicatePadron }) {
   const [draft, setDraft] = useState(item || null);
   const [previewFileId, setPreviewFileId] = useState("");
   const [observacionIntendenteDraft, setObservacionIntendenteDraft] = useState("");
@@ -2102,6 +2130,14 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
   const warnings = getExpedienteWarnings(draft, modalFiles);
 
   const updateField = (field, value) => {
+    if (field === "padronNumero") {
+      const duplicatedPadron = findDuplicatePadron(existingExpedientes, value, draft.id);
+      if (duplicatedPadron) {
+        onDuplicatePadron?.(value, duplicatedPadron);
+        return;
+      }
+    }
+
     const next = { ...draft, [field]: value };
     setDraft(next);
     if (canEdit) onSaveField(draft.id, { [field]: value });
@@ -2320,7 +2356,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
   );
 }
 
-function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
+function NuevoExpedienteModal({ open, onClose, onSave, saving, users, existingExpedientes = [] }) {
   const [form, setForm] = useState({
     titular: "",
     dni: "",
@@ -2363,7 +2399,16 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
   const barrioFinal = form.barrioSeleccionado === "Otro" ? form.barrioManual.trim() : form.barrioSeleccionado;
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
+  const duplicatedPadron = findDuplicatePadron(existingExpedientes, form.padronNumero);
+
   const guardar = () => {
+    const currentDuplicatedPadron = findDuplicatePadron(existingExpedientes, form.padronNumero);
+
+    if (currentDuplicatedPadron) {
+      setValidationError(`El padrón ${cleanText(form.padronNumero)} ya existe en ${currentDuplicatedPadron.num || "otro expediente"} (${currentDuplicatedPadron.titular || "sin titular"}). No se puede cargar duplicado.`);
+      return;
+    }
+
     if (!form.titular.trim() || !form.area) {
       setValidationError("Completá titular y área.");
       return;
@@ -2397,11 +2442,12 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
         </div>
         <div style={{ padding: 20, display: "grid", gap: 12 }}>
           {validationError ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 8px", fontSize: 12 }}>{validationError}</div> : null}
+          {duplicatedPadron ? <div style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", borderRadius: 10, padding: "8px 8px", fontSize: 12, fontWeight: 700 }}>Padrón ya existente: {duplicatedPadron.num || "expediente sin número"} · {duplicatedPadron.titular || "sin titular"}</div> : null}
           <input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nombre del titular" style={inputStyle} />
           <input value={form.dni} onChange={(e) => set("dni", e.target.value)} placeholder="DNI" style={inputStyle} />
           <input value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="Contacto / teléfono" style={inputStyle} />
           <select value={form.estadoCivil} onChange={(e) => set("estadoCivil", e.target.value)} style={inputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Estado civil"}</option>)}</select>
-          <input value={form.padronNumero} onChange={(e) => set("padronNumero", e.target.value)} placeholder="N° de padrón" style={inputStyle} />
+          <input value={form.padronNumero} onChange={(e) => { set("padronNumero", e.target.value); setValidationError(""); }} placeholder="N° de padrón" style={{ ...inputStyle, borderColor: duplicatedPadron ? "#fb923c" : C.border, background: duplicatedPadron ? "#fff7ed" : inputStyle.background }} />
           <select value={form.localidad} onChange={(e) => { set("localidad", e.target.value); set("barrioSeleccionado", ""); set("barrioManual", ""); }} style={inputStyle}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
           <select value={form.barrioSeleccionado} onChange={(e) => set("barrioSeleccionado", e.target.value)} style={inputStyle}>
             <option value="">Barrio</option>
@@ -2415,14 +2461,14 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
         </div>
         <div style={{ padding: "0 20px 20px", display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <button onClick={onClose} style={btnGhost} disabled={saving}>Cancelar</button>
-          <button onClick={guardar} style={btnPrimary} disabled={saving}>{saving ? "Guardando..." : "Guardar"}</button>
+          <button onClick={guardar} style={{ ...btnPrimary, opacity: duplicatedPadron ? 0.55 : 1, cursor: duplicatedPadron ? "not-allowed" : "pointer" }} disabled={saving || !!duplicatedPadron}>{saving ? "Guardando..." : "Guardar"}</button>
         </div>
       </div>
     </div>
   );
 }
 
-function ExpedienteRow({ exp, rowIndex = 0, users, usersMap, onSaveField, onOpen, onUploadPlano, onDeletePlano, deletingPlanoId, uploadingPlano, savingField, canEdit, onDelete, planos = [], selected, onToggleSelect }) {
+function ExpedienteRow({ exp, rowIndex = 0, users, usersMap, onSaveField, onOpen, onUploadPlano, onDeletePlano, deletingPlanoId, uploadingPlano, savingField, canEdit, onDelete, planos = [], selected, onToggleSelect, existingExpedientes = [], onDuplicatePadron }) {
   const [draft, setDraft] = useState(exp);
 
   useEffect(() => {
@@ -2437,6 +2483,14 @@ function ExpedienteRow({ exp, rowIndex = 0, users, usersMap, onSaveField, onOpen
   const rowFieldBg = rowIndex % 2 === 0 ? "#ffffff" : "#e2e8f0";
 
   const updateField = (field, value) => {
+    if (field === "padronNumero") {
+      const duplicatedPadron = findDuplicatePadron(existingExpedientes, value, draft.id);
+      if (duplicatedPadron) {
+        onDuplicatePadron?.(value, duplicatedPadron);
+        return;
+      }
+    }
+
     const next = { ...draft, [field]: value };
     setDraft(next);
     if (canEdit) onSaveField(draft.id, { [field]: value });
@@ -3191,6 +3245,13 @@ export default function App() {
     setError("");
     setNotice("");
 
+    const duplicatedPadron = findDuplicatePadron(data, form.padronNumero);
+    if (duplicatedPadron) {
+      setError(`No se creó el expediente: el padrón ${cleanText(form.padronNumero)} ya existe en ${duplicatedPadron.num || "otro expediente"} (${duplicatedPadron.titular || "sin titular"}).`);
+      setSaving(false);
+      return;
+    }
+
     const payload = {
       numero_expediente: nextExpedienteNumber(data),
       titular: normalizeTitular(form.titular),
@@ -3256,6 +3317,15 @@ export default function App() {
 
   function saveExpedienteField(expedienteId, partial) {
     if (!canEdit) return;
+
+    if (Object.prototype.hasOwnProperty.call(partial, "padronNumero")) {
+      const duplicatedPadron = findDuplicatePadron(data, partial.padronNumero, expedienteId);
+      if (duplicatedPadron) {
+        setError(`No se guardó el cambio: el padrón ${cleanText(partial.padronNumero)} ya existe en ${duplicatedPadron.num || "otro expediente"} (${duplicatedPadron.titular || "sin titular"}).`);
+        return;
+      }
+    }
+
     setData((prev) => prev.map((item) => (item.id === expedienteId ? { ...item, ...partial } : item)));
     setModalItem((prev) => (prev && prev.id === expedienteId ? { ...prev, ...partial } : prev));
 
@@ -3601,12 +3671,14 @@ export default function App() {
         return;
       }
 
-      const incomingDnis = [...new Set(filtered.map((row) => normalizeDni(row.dni)).filter(Boolean))];
       const { data: existingRows, error: existingError } = await supabase
         .from("expedientes")
         .select("dni, titular, padron_numero");
       if (existingError) throw existingError;
 
+      const existingPadronSet = new Set(
+        (existingRows || []).map((row) => normalizePadron(row.padron_numero)).filter(Boolean)
+      );
       const existingDniSet = new Set(
         (existingRows || []).map((row) => normalizeDni(row.dni)).filter(Boolean)
       );
@@ -3617,14 +3689,24 @@ export default function App() {
           .filter(Boolean)
       );
 
+      const seenBatchPadrones = new Set();
       const seenBatchDnis = new Set();
       const seenBatchFallbackKeys = new Set();
       const deduped = [];
       let ignoredDuplicates = 0;
 
       for (const row of filtered) {
+        const padron = normalizePadron(row.padronNumero);
         const dni = normalizeDni(row.dni);
         const fallbackKey = !dni ? buildDuplicateKey(row) : "";
+
+        if (padron) {
+          if (existingPadronSet.has(padron) || seenBatchPadrones.has(padron)) {
+            ignoredDuplicates += 1;
+            continue;
+          }
+          seenBatchPadrones.add(padron);
+        }
 
         if (dni) {
           if (existingDniSet.has(dni) || seenBatchDnis.has(dni)) {
@@ -3650,7 +3732,7 @@ export default function App() {
       if (!deduped.length) {
         setImportSummary({ totalFiles: importFiles.length, totalRows: 0, ignoredDuplicates, details });
         setImportFiles([]);
-        setNotice(`No se cargaron expedientes nuevos. Se ignoraron ${ignoredDuplicates} repetidos por DNI o por titular + padrón.`);
+        setNotice(`No se cargaron expedientes nuevos. Se ignoraron ${ignoredDuplicates} repetidos por padrón, DNI o titular + padrón.`);
         setActiveNav("Expedientes");
         setImportingExcel(false);
         await loadInitialData(true);
@@ -3698,7 +3780,7 @@ export default function App() {
       await loadInitialData(true);
       setImportSummary({ totalFiles: importFiles.length, totalRows: insertedCount, ignoredDuplicates, details });
       setImportFiles([]);
-      setNotice(`Importación completada. Se cargaron ${insertedCount} expedientes y se ignoraron ${ignoredDuplicates} repetidos por DNI o por titular + padrón.`);
+      setNotice(`Importación completada. Se cargaron ${insertedCount} expedientes y se ignoraron ${ignoredDuplicates} repetidos por padrón, DNI o titular + padrón.`);
       setActiveNav("Expedientes");
     } catch (err) {
       setError(`No se pudo importar el Excel: ${err.message}`);
@@ -3977,17 +4059,17 @@ export default function App() {
                   </div>
 
                   <div style={{ overflowX: "auto", overflowY: "visible", width: "100%" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1480, fontSize: 11, tableLayout: "fixed" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1800, fontSize: 11, tableLayout: "fixed" }}>
                       <colgroup>
                         {TABLE_COLGROUP.map((col) => <col key={col.key} style={{ width: col.width }} />)}
                       </colgroup>
                       <thead>
                         <tr style={{ borderBottom: "1px solid #f1f5f9", background: "#fafafa", position: "sticky", top: 0, zIndex: 2 }}>
-                          {["✓", "N° Expediente", "Titular", "DNI", "Contacto", "Dirección", "Estado civil", "Barrio", "N° de padrón", "Archivos", "Estado", "Área", "Responsable", "Notas", "Acciones"].map((h) => <th key={h} style={{ padding: "7px 6px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: ".05em", background: "#fafafa", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h}</th>)}
+                          {EXPEDIENTES_TABLE_HEADERS.map((h) => <th key={h} style={{ padding: "7px 6px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: ".05em", background: "#fafafa", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h}</th>)}
                         </tr>
                       </thead>
                       <tbody>
-                        {slice.length === 0 ? <tr><td colSpan={15}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp, rowIndex) => <ExpedienteRow key={exp.id} exp={exp} rowIndex={rowIndex} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} />)}
+                        {slice.length === 0 ? <tr><td colSpan={EXPEDIENTES_TABLE_HEADERS.length}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp, rowIndex) => <ExpedienteRow key={exp.id} exp={exp} rowIndex={rowIndex} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} existingExpedientes={data} onDuplicatePadron={(value, duplicated) => setError(`No se guardó el cambio: el padrón ${cleanText(value)} ya existe en ${duplicated.num || "otro expediente"} (${duplicated.titular || "sin titular"}).`)} />)}
                       </tbody>
                     </table>
                   </div>
@@ -4026,9 +4108,9 @@ export default function App() {
         </div>
       </div>
 
-      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} activeUser={activeUser} observacionesIntendente={observacionesByExpediente[modalItem?.id] || []} onAddObservacionIntendente={addObservacionIntendente} addingObservacionIntendente={addingObservacionIntendente} />
+      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} activeUser={activeUser} observacionesIntendente={observacionesByExpediente[modalItem?.id] || []} onAddObservacionIntendente={addObservacionIntendente} addingObservacionIntendente={addingObservacionIntendente} existingExpedientes={data} onDuplicatePadron={(value, duplicated) => setError(`No se guardó el cambio: el padrón ${cleanText(value)} ya existe en ${duplicated.num || "otro expediente"} (${duplicated.titular || "sin titular"}).`)} />
       <PasswordAdminModal open={passwordModalOpen} mode={passwordModalMode} selectedUserId={passwordModalMode === "change" ? (activeUser?.id || selectedLoginUserId) : selectedLoginUserId} onClose={() => { setPasswordModalOpen(false); setPasswordModalError(""); }} onSubmit={handlePasswordAction} loading={passwordModalLoading} error={passwordModalError} />
-      <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} />
+      <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} existingExpedientes={data} />
     </div>
   );
 }
