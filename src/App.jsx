@@ -1457,7 +1457,7 @@ body {
 }
 .header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   margin-top: 0.4cm;
   margin-bottom: 2.1cm;
@@ -1482,12 +1482,18 @@ body {
   font-size: 22px;
 }
 .logo-right {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 }
 .logo-right img {
   width: 138px;
+  max-height: 72px;
   height: auto;
   object-fit: contain;
+  display: block;
 }
 .date {
   text-align: right;
