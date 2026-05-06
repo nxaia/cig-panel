@@ -2116,12 +2116,10 @@ function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, on
 
 function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [], onNext, modalIndex = 0, modalTotal = 0, activeUser, observacionesIntendente = [], onAddObservacionIntendente, addingObservacionIntendente, existingExpedientes = [], onDuplicatePadron }) {
   const [draft, setDraft] = useState(item || null);
-  const [previewFileId, setPreviewFileId] = useState("");
   const [observacionIntendenteDraft, setObservacionIntendenteDraft] = useState("");
 
   useEffect(() => {
     setDraft(item || null);
-    setPreviewFileId("");
     setObservacionIntendenteDraft("");
   }, [item]);
 
@@ -2131,7 +2129,6 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
   const saving = savingField === String(draft.id);
   const barrios = BARRIOS[zona.localidad || "Banda del Río Salí"] || ALL_BARRIOS;
   const modalFiles = planos.length ? planos : (draft.planoUrl ? [{ id: `legacy-${draft.id}`, nombreOriginal: draft.planoPath || "Archivo cargado", publicUrl: draft.planoUrl, tamanoBytes: 0, createdAt: draft.upd, tipoMime: "" }] : []);
-  const previewTarget = modalFiles.find((file) => String(file.id) === String(previewFileId)) || modalFiles[0] || null;
   const completeness = getExpedienteCompleteness(draft, modalFiles);
   const warnings = getExpedienteWarnings(draft, modalFiles);
 
@@ -2290,58 +2287,36 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
               {modalFiles.length ? (
                 <div style={{ display: "grid", gap: 12 }}>
                   <div style={{ display: "grid", gap: 10 }}>
-                    {modalFiles.map((plano) => {
-                      const activePreview = String(previewTarget?.id || "") === String(plano.id);
-                      return (
-                        <div key={plano.id} style={{ background: activePreview ? "#eff6ff" : "#f8fafc", border: `1px solid ${activePreview ? "#93c5fd" : C.border}`, borderRadius: 12, padding: "8px 10px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                          <div>
-                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                              <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>{plano.nombreOriginal || "Archivo"}</div>
-                              <span style={{ fontSize: 10, color: C.dim, border: `1px solid ${C.border}`, borderRadius: 999, padding: "1px 6px" }}>{getAttachmentLabel(plano.nombreOriginal, plano.tipoMime)}</span>
-                            </div>
-                            <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
-                              {plano.createdAt ? `Cargado: ${formatDateTime(plano.createdAt)}` : "Cargado: sin fecha"}
-                              {" • "}
-                              {`Peso: ${plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "no registrado"}`}
-                            </div>
+                    {modalFiles.map((plano) => (
+                      <div key={plano.id} style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>{plano.nombreOriginal || "Archivo"}</div>
+                            <span style={{ fontSize: 10, color: C.dim, border: `1px solid ${C.border}`, borderRadius: 999, padding: "1px 6px" }}>{getAttachmentLabel(plano.nombreOriginal, plano.tipoMime)}</span>
                           </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                            <button type="button" onClick={() => setPreviewFileId(String(plano.id))} style={{ ...btnGhost, padding: "7px 10px", fontSize: 12, color: C.sky }}>Ver</button>
-                            <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
-                            <a href={plano.publicUrl} download style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Descargar</a>
-                            {canEdit ? (
-                              <button
-                                type="button"
-                                onClick={() => onDeletePlano(draft.id, plano)}
-                                disabled={deletingPlanoId === String(plano.id || draft.id)}
-                                style={{ border: "none", background: "transparent", color: C.red, fontWeight: 700, cursor: deletingPlanoId === String(plano.id || draft.id) ? "not-allowed" : "pointer", opacity: deletingPlanoId === String(plano.id || draft.id) ? 0.6 : 1, padding: 0 }}
-                              >
-                                {deletingPlanoId === String(plano.id || draft.id) ? "Eliminando..." : "Eliminar"}
-                              </button>
-                            ) : null}
+                          <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
+                            {plano.createdAt ? `Cargado: ${formatDateTime(plano.createdAt)}` : "Cargado: sin fecha"}
+                            {" • "}
+                            {`Peso: ${plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "no registrado"}`}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-
-                  {previewTarget ? (
-                    <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, background: "#fff", overflow: "hidden" }}>
-                      <div style={{ padding: "8px 10px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>Vista previa: {previewTarget.nombreOriginal}</div>
-                        <a href={previewTarget.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir en pestaña</a>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
+                          <a href={plano.publicUrl} download style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Descargar</a>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              onClick={() => onDeletePlano(draft.id, plano)}
+                              disabled={deletingPlanoId === String(plano.id || draft.id)}
+                              style={{ border: "none", background: "transparent", color: C.red, fontWeight: 700, cursor: deletingPlanoId === String(plano.id || draft.id) ? "not-allowed" : "pointer", opacity: deletingPlanoId === String(plano.id || draft.id) ? 0.6 : 1, padding: 0 }}
+                            >
+                              {deletingPlanoId === String(plano.id || draft.id) ? "Eliminando..." : "Eliminar"}
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
-                      {getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "image" ? (
-                        <div style={{ padding: 12, background: "#f8fafc", display: "flex", justifyContent: "center" }}>
-                          <img src={previewTarget.publicUrl} alt={previewTarget.nombreOriginal} style={{ maxWidth: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 10 }} />
-                        </div>
-                      ) : getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "pdf" ? (
-                        <iframe title={previewTarget.nombreOriginal} src={previewTarget.publicUrl} style={{ width: "100%", height: 420, border: "none", background: "#fff" }} />
-                      ) : (
-                        <div style={{ padding: 20, fontSize: 13, color: C.muted }}>Este tipo de archivo no tiene vista previa dentro del panel. Usá “Descargar” o “Abrir en pestaña”.</div>
-                      )}
-                    </div>
-                  ) : null}
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <span style={{ color: C.dim, fontSize: 12 }}>Sin archivos adjuntos</span>
