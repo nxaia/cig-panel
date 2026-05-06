@@ -2285,38 +2285,36 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
               </div>
 
               {modalFiles.length ? (
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {modalFiles.map((plano) => (
-                      <div key={plano.id} style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                        <div>
-                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                            <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>{plano.nombreOriginal || "Archivo"}</div>
-                            <span style={{ fontSize: 10, color: C.dim, border: `1px solid ${C.border}`, borderRadius: 999, padding: "1px 6px" }}>{getAttachmentLabel(plano.nombreOriginal, plano.tipoMime)}</span>
-                          </div>
-                          <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
-                            {plano.createdAt ? `Cargado: ${formatDateTime(plano.createdAt)}` : "Cargado: sin fecha"}
-                            {" • "}
-                            {`Peso: ${plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "no registrado"}`}
-                          </div>
+                <div style={{ display: "grid", gap: 10 }}>
+                  {modalFiles.map((plano) => (
+                    <div key={plano.id} style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 10px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>{plano.nombreOriginal || "Archivo"}</div>
+                          <span style={{ fontSize: 10, color: C.dim, border: `1px solid ${C.border}`, borderRadius: 999, padding: "1px 6px" }}>{getAttachmentLabel(plano.nombreOriginal, plano.tipoMime)}</span>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                          <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
-                          <a href={plano.publicUrl} download style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Descargar</a>
-                          {canEdit ? (
-                            <button
-                              type="button"
-                              onClick={() => onDeletePlano(draft.id, plano)}
-                              disabled={deletingPlanoId === String(plano.id || draft.id)}
-                              style={{ border: "none", background: "transparent", color: C.red, fontWeight: 700, cursor: deletingPlanoId === String(plano.id || draft.id) ? "not-allowed" : "pointer", opacity: deletingPlanoId === String(plano.id || draft.id) ? 0.6 : 1, padding: 0 }}
-                            >
-                              {deletingPlanoId === String(plano.id || draft.id) ? "Eliminando..." : "Eliminar"}
-                            </button>
-                          ) : null}
+                        <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
+                          {plano.createdAt ? `Cargado: ${formatDateTime(plano.createdAt)}` : "Cargado: sin fecha"}
+                          {" • "}
+                          {`Peso: ${plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "no registrado"}`}
                         </div>
                       </div>
-                    ))}
-                  </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
+                        <a href={plano.publicUrl} download style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Descargar</a>
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => onDeletePlano(draft.id, plano)}
+                            disabled={deletingPlanoId === String(plano.id || draft.id)}
+                            style={{ border: "none", background: "transparent", color: C.red, fontWeight: 700, cursor: deletingPlanoId === String(plano.id || draft.id) ? "not-allowed" : "pointer", opacity: deletingPlanoId === String(plano.id || draft.id) ? 0.6 : 1, padding: 0 }}
+                          >
+                            {deletingPlanoId === String(plano.id || draft.id) ? "Eliminando..." : "Eliminar"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <span style={{ color: C.dim, fontSize: 12 }}>Sin archivos adjuntos</span>
