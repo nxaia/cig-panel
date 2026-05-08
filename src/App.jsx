@@ -545,6 +545,8 @@ function normalizeCertificadoRecord(row) {
     domicilio: row.domicilio || "",
     barrio: row.barrio || "",
     padronCatastral: row.padron_catastral || "",
+    matriculaCatastral: row.matricula_catastral || "",
+    propietarioLegal: row.propietario_legal || "",
     telefono: row.telefono || "",
     motivo: row.motivo || "",
     presentadoAnte: row.presentado_ante || "",
@@ -1432,10 +1434,17 @@ const CERTIFICADO_ESTADOS = {
 
 
 function buildCertificadoPrintHtml(form, fecha, logoMunicipio, logoAreaPrint) {
+  const fechaLarga = new Date().toLocaleDateString("es-AR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
   return `
 <html>
 <head>
-<title>${form.numero || "Informe de residencia"}</title>
+<title>${form.numero || "Constancia de tenencia precaria"}</title>
 <style>
 @page {
   size: A4;
@@ -1457,10 +1466,10 @@ body {
 }
 .header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-top: 0.4cm;
-  margin-bottom: 2.1cm;
+  margin-top: 0.25cm;
+  margin-bottom: 1.2cm;
 }
 .logo-left {
   display: flex;
@@ -1484,32 +1493,47 @@ body {
 .logo-right {
   height: 72px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   text-align: center;
 }
 .logo-right img {
   width: 138px;
-  max-height: 72px;
+  max-height: 58px;
   height: auto;
   object-fit: contain;
   display: block;
 }
+.logo-right-caption {
+  margin-top: 2px;
+  font-size: 6.5pt;
+  letter-spacing: 1.2px;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
 .date {
   text-align: right;
   font-size: 12pt;
-  margin-bottom: 1.05cm;
+  margin-bottom: 0.8cm;
+}
+.org-block {
+  margin-bottom: 1.2cm;
+  font-size: 13pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #444;
+  line-height: 1.65;
 }
 .title {
   text-align: center;
   font-size: 12pt;
-  font-style: italic;
-  text-decoration: underline;
-  font-weight: 400;
+  font-weight: 700;
+  text-transform: uppercase;
   margin: 0 0 0.7cm 0;
 }
 .content {
-  width: 15.4cm;
+  width: 15.9cm;
   margin-left: 0.25cm;
 }
 p {
@@ -1522,6 +1546,25 @@ p {
 .important {
   font-weight: 700;
   text-transform: uppercase;
+}
+.signature-block {
+  margin-top: 2.1cm;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2cm;
+  align-items: end;
+}
+.signature-line {
+  border-top: 1px solid #000;
+  padding-top: 6px;
+  font-weight: 700;
+  font-size: 10pt;
+}
+.signature-fields {
+  display: grid;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 10pt;
 }
 @media print {
   body {
@@ -1543,34 +1586,41 @@ p {
       </div>
       <div class="logo-right">
         <img src="${logoAreaPrint}" />
+        <div class="logo-right-caption">Dir. de Regularización Dominial y Hábitat<br/>La Banda del Río Salí</div>
       </div>
     </div>
 
-    <div class="date">${fecha}</div>
+    <div class="date">La Banda del Río Salí, ${fechaLarga}</div>
 
-    <div class="title">INFORME DE RESIDENCIA</div>
+    <div class="org-block">
+      <div>Municipio de La Banda del Río Salí</div>
+      <div>Secretaría de Gobierno</div>
+      <div>Dirección de Regularización Dominial y Hábitat</div>
+    </div>
+
+    <div class="title">Constancia de tenencia precaria</div>
 
     <div class="content">
-      <p>Por medio de la presente, informamos que:</p>
-
       <p class="indent">
-        El Sr./Sra. <span class="important">${form.vecinoNombre || "—"}</span>, identificado/a con DNI N°<span class="important">${form.dni || "—"}</span>,
-        domiciliado en calle: <span class="important">${form.domicilio || "—"}</span> ha manifestado residir en el inmueble sito en calle:
-        <span class="important">${form.domicilio || "—"}</span>. Bº- <span class="important">${form.barrio || "—"}</span>${form.padronCatastral ? `. PADRÓN CATASTRAL: <span class="important">${form.padronCatastral}</span>.` : "."}
+        La Dirección de Regularización Dominial y Hábitat del Municipio de La Banda del Río Salí, otorga la presente Tenencia Precaria al Sr/a
+        <span class="important">${form.vecinoNombre || "—"}</span>; DNI:<span class="important">${form.dni || "—"}</span>, con domicilio en calle:
+        <span class="important">${form.domicilio || "—"}</span>; Barrio: <span class="important">${form.barrio || "—"}</span>. – Donde la propiedad se encuentra posicionada en una fracción del Padrón:
+        <span class="important">${form.padronCatastral || "—"}</span>. Matrícula catastral: <span class="important">${form.matriculaCatastral || "—"}</span>. propietario Legal:
+        <span class="important">${form.propietarioLegal || "—"}</span>.
       </p>
 
       <p class="indent">
-        La presente se expide a título estrictamente informativo, sin que implique certificación fehaciente ni genere responsabilidad u obligación legal alguna para quien la emite.
+        La presente tenencia es de carácter precario, personal e intransferible, y no confiere al/la tenedor/a ningún derecho real ni expectativa de dominio sobre el inmueble mencionado. El/la tenedor/a reconoce que la ocupación se encuentra permitida por razones sociales y de necesidad habitacional, y que la presente autorización administrativa no implica reconocimiento de derecho alguno sobre la titularidad dominial del bien.
       </p>
 
-      <p class="indent">
-        Personal de la oficina de Dir. de Regularización Dominial y Hábitat del Municipio, se ha constituido al domicilio y verifica que la sr/a:
-        <span class="important">${form.vecinoNombre || "—"}</span> se encuentra allí y ese lugar sería su residencia.
-      </p>
-
-      <p class="indent">
-        Este informe se emite ante el único y exclusivo fin de ser presentado ante <span>${form.presentadoAnte || "_______________________________"}</span>. –
-      </p>
+      <div class="signature-block">
+        <div class="signature-fields">
+          <div>FIRMA SOLICITANTE:</div>
+          <div>ACLARACIÓN:</div>
+          <div>D.N.I.:</div>
+        </div>
+        <div class="signature-line">Firma y Sello del Responsable</div>
+      </div>
     </div>
   </div>
   <script>
@@ -1667,16 +1717,16 @@ function CertificadosSection({
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 22 }}>Certificados de residencia</h2>
+          <h2 style={{ margin: 0, fontSize: 22 }}>Constancias</h2>
           <div style={{ color: C.muted, fontSize: 13, marginTop: 4 }}>Control de solicitudes, visitas, documentación e impresión.</div>
         </div>
         {canManageCertificados ? (
-          <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo certificado</button>
+          <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nueva constancia</button>
         ) : null}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-        {[["Certificados", stats.total, "Solicitudes registradas"], ["Pendientes", stats.pendientes, "Requieren gestión"], ["Listos / entregados", stats.listos, "Proceso avanzado"], ["Con archivos", stats.conArchivos, "Documentación cargada"]].map(([label, value, note]) => (
+        {[["Constancias", stats.total, "Solicitudes registradas"], ["Pendientes", stats.pendientes, "Requieren gestión"], ["Listos / entregados", stats.listos, "Proceso avanzado"], ["Con archivos", stats.conArchivos, "Documentación cargada"]].map(([label, value, note]) => (
           <div key={label} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px 18px" }}>
             <div style={{ fontSize: 11, color: C.muted }}>{label}</div>
             <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}>{value}</div>
@@ -1690,7 +1740,7 @@ function CertificadosSection({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar vecino, DNI, domicilio, barrio o certificado..."
+            placeholder="Buscar vecino, DNI, domicilio, barrio o constancia..."
             style={{ ...inputStyle, flex: "1 1 420px", background: "#fff" }}
           />
           <select value={estado} onChange={(e) => setEstado(e.target.value)} style={{ ...inputStyle, width: 220, background: "#fff" }}>
@@ -1709,10 +1759,10 @@ function CertificadosSection({
         </div>
 
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1280 }}>
             <thead>
               <tr style={{ background: "#f8fafc", color: C.dim, fontSize: 11, textTransform: "uppercase" }}>
-                {["✓", "N° certificado", "Vecino", "DNI", "Domicilio", "Barrio", "Estado", "Archivos", "Agente", "Acciones"].map((h) => (
+                {["✓", "N° constancia", "Vecino", "DNI", "Domicilio", "Barrio", "Matrícula catastral", "Propietario legal", "Estado", "Archivos", "Agente", "Acciones"].map((h) => (
                   <th key={h} style={{ textAlign: "left", padding: "10px 12px", borderBottom: `1px solid ${C.border}` }}>{h}</th>
                 ))}
               </tr>
@@ -1735,6 +1785,8 @@ function CertificadosSection({
                     <td style={{ padding: "10px 12px" }}>{cert.dni || "—"}</td>
                     <td style={{ padding: "10px 12px" }}>{cert.domicilio || "—"}</td>
                     <td style={{ padding: "10px 12px" }}>{cert.barrio || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.matriculaCatastral || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.propietarioLegal || "—"}</td>
                     <td style={{ padding: "10px 12px" }}>
                       <span style={{ background: estadoCfg.bg, color: estadoCfg.color, border: `1px solid ${estadoCfg.border}`, borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 700 }}>{estadoCfg.label}</span>
                     </td>
@@ -1746,7 +1798,7 @@ function CertificadosSection({
                         {canManageCertificados ? (
                           <button
                             onClick={async () => {
-                              if (!confirm("¿Eliminar este certificado?")) return;
+                              if (!confirm("¿Eliminar esta constancia?")) return;
                               const ok = await onDelete(cert.id);
                               if (ok && selected?.id === cert.id) setSelected(null);
                             }}
@@ -1761,8 +1813,8 @@ function CertificadosSection({
                 );
               }) : (
                 <tr>
-                  <td colSpan={10} style={{ padding: 24 }}>
-                    <EmptyBlock title="Sin certificados" text="Todavía no hay certificados cargados o no coinciden con los filtros." />
+                  <td colSpan={12} style={{ padding: 24 }}>
+                    <EmptyBlock title="Sin constancias" text="Todavía no hay constancias cargadas o no coinciden con los filtros." />
                   </td>
                 </tr>
               )}
@@ -1783,8 +1835,10 @@ function CertificadosSection({
             domicilio: "",
             barrio: "",
             padronCatastral: "",
+            matriculaCatastral: "",
+            propietarioLegal: "",
             telefono: "",
-            motivo: "Certificado de residencia",
+            motivo: "Constancia de tenencia precaria",
             presentadoAnte: "",
             estado: "pendiente",
             fechaVisita: "",
@@ -1864,8 +1918,8 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
       <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 980, margin: "20px auto", background: "#fff", borderRadius: 20, overflow: "hidden", boxShadow: "0 24px 80px rgba(15,23,42,.18)" }}>
         <div style={{ background: "linear-gradient(135deg,#0ea5e9,#14b8a6)", padding: "18px 22px", color: "#fff", display: "flex", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <div style={{ fontSize: 11, textTransform: "uppercase", opacity: 0.85 }}>Certificado de residencia</div>
-            <div style={{ fontSize: 22, fontWeight: 800 }}>{form.numero || "Nuevo certificado"}</div>
+            <div style={{ fontSize: 11, textTransform: "uppercase", opacity: 0.85 }}>Constancia de tenencia precaria</div>
+            <div style={{ fontSize: 22, fontWeight: 800 }}>{form.numero || "Nueva constancia"}</div>
           </div>
           <button onClick={onClose} style={{ ...btnGhost, background: "rgba(255,255,255,.15)", color: "#fff", borderColor: "rgba(255,255,255,.35)" }}>Cerrar</button>
         </div>
@@ -1875,7 +1929,7 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
             <div>
-              <div style={labelStyle}>N° certificado</div>
+              <div style={labelStyle}>N° constancia</div>
               <input value={form.numero || ""} disabled={!canManageCertificados} onChange={(e) => set("numero", e.target.value)} style={inputStyle} />
             </div>
             <div>
@@ -1903,6 +1957,14 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
             <div>
               <div style={labelStyle}>Padrón catastral</div>
               <input value={form.padronCatastral || ""} disabled={!canManageCertificados} onChange={(e) => set("padronCatastral", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Matrícula catastral</div>
+              <input value={form.matriculaCatastral || ""} disabled={!canManageCertificados} onChange={(e) => set("matriculaCatastral", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Propietario legal</div>
+              <input value={form.propietarioLegal || ""} disabled={!canManageCertificados} onChange={(e) => set("propietarioLegal", e.target.value)} style={inputStyle} />
             </div>
             <div>
               <div style={labelStyle}>Teléfono/contacto</div>
@@ -1990,23 +2052,23 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
             </div>
           ) : (
             <div style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 14, padding: 12, color: C.muted, fontSize: 13 }}>
-              Primero guardá el certificado. Después vas a poder subir la documentación adjunta.
+              Primero guarda la constancia. Después vas a poder subir la documentación adjunta.
             </div>
           )}
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {canManageCertificados ? <button onClick={submit} style={btnPrimary}>Guardar certificado</button> : null}
-              <button onClick={printCertificado} style={btnGhost}>Imprimir certificado</button>
+              {canManageCertificados ? <button onClick={submit} style={btnPrimary}>Guardar constancia</button> : null}
+              <button onClick={printCertificado} style={btnGhost}>Imprimir constancia</button>
               {mode === "edit" && canManageCertificados ? (
                 <button
                   onClick={async () => {
-                    if (!confirm("¿Eliminar este certificado?")) return;
+                    if (!confirm("¿Eliminar esta constancia?")) return;
                     await onDelete();
                   }}
                   style={{ ...btnGhost, color: C.red, borderColor: "#fecaca" }}
                 >
-                  Eliminar certificado
+                  Eliminar constancia
                 </button>
               ) : null}
             </div>
@@ -2737,7 +2799,7 @@ export default function App() {
     if (certificadosResult.error) {
       setCertificados([]);
       setArchivosByCertificado({});
-      setError(`No se pudieron cargar los certificados: ${certificadosResult.error.message}`);
+      setError(`No se pudieron cargar las constancias: ${certificadosResult.error.message}`);
     } else {
       const certificadosData = certificadosResult.data || [];
       setCertificados(certificadosData);
@@ -2747,7 +2809,7 @@ export default function App() {
 
       if (certArchivosResult.error) {
         setArchivosByCertificado({});
-        setNotice(`Los certificados se cargaron, pero no se pudieron cargar sus archivos: ${certArchivosResult.error.message}`);
+        setNotice(`Las constancias se cargaron, pero no se pudieron cargar sus archivos: ${certArchivosResult.error.message}`);
       } else {
         setArchivosByCertificado(certArchivosResult.data || {});
       }
@@ -3007,8 +3069,10 @@ export default function App() {
       domicilio: cleanText(payload.domicilio),
       barrio: cleanText(payload.barrio),
       padron_catastral: cleanText(payload.padronCatastral),
+      matricula_catastral: cleanText(payload.matriculaCatastral),
+      propietario_legal: cleanText(payload.propietarioLegal),
       telefono: normalizePhone(payload.telefono),
-      motivo: cleanText(payload.motivo) || "Certificado de residencia",
+      motivo: cleanText(payload.motivo) || "Constancia de tenencia precaria",
       presentado_ante: cleanText(payload.presentadoAnte),
       estado: cleanText(payload.estado) || "pendiente",
       fecha_visita: payload.fechaVisita || null,
@@ -3026,7 +3090,7 @@ export default function App() {
     setSaving(false);
 
     if (insertError) {
-      setError(`No se pudo guardar el certificado: ${insertError.message}`);
+      setError(`No se pudo guardar la constancia: ${insertError.message}`);
       return false;
     }
 
@@ -3037,7 +3101,7 @@ export default function App() {
     } else {
       setCertificados((prev) => [normalized, ...prev]);
     }
-    setNotice("Certificado guardado correctamente.");
+    setNotice("Constancia guardada correctamente.");
     return true;
   }
 
@@ -3054,8 +3118,10 @@ export default function App() {
       domicilio: cleanText(payload.domicilio),
       barrio: cleanText(payload.barrio),
       padron_catastral: cleanText(payload.padronCatastral),
+      matricula_catastral: cleanText(payload.matriculaCatastral),
+      propietario_legal: cleanText(payload.propietarioLegal),
       telefono: normalizePhone(payload.telefono),
-      motivo: cleanText(payload.motivo) || "Certificado de residencia",
+      motivo: cleanText(payload.motivo) || "Constancia de tenencia precaria",
       presentado_ante: cleanText(payload.presentadoAnte),
       estado: cleanText(payload.estado) || "pendiente",
       fecha_visita: payload.fechaVisita || null,
@@ -3074,13 +3140,13 @@ export default function App() {
     setSaving(false);
 
     if (updateError) {
-      setError(`No se pudo actualizar el certificado: ${updateError.message}`);
+      setError(`No se pudo actualizar la constancia: ${updateError.message}`);
       return null;
     }
 
     const normalized = normalizeCertificadoRecord(updated);
     setCertificados((prev) => prev.map((cert) => cert.id === certificadoId ? normalized : cert));
-    setNotice("Certificado actualizado correctamente.");
+    setNotice("Constancia actualizada correctamente.");
     return normalized;
   }
 
@@ -3099,7 +3165,7 @@ export default function App() {
     setSaving(false);
 
     if (deleteError) {
-      setError(`No se pudo eliminar el certificado: ${deleteError.message}`);
+      setError(`No se pudo eliminar la constancia: ${deleteError.message}`);
       return false;
     }
 
@@ -3212,7 +3278,7 @@ export default function App() {
       setArchivosByCertificado((prev) => ({ ...prev, [certificadoId]: refreshed.data[certificadoId] || [] }));
       setNotice("Archivo/documentación cargada correctamente.");
     } catch (err) {
-      setError(err.message || "No se pudieron subir los archivos del certificado.");
+      setError(err.message || "No se pudieron subir los archivos de la constancia.");
     } finally {
       setUploadingCertificadoId("");
     }
@@ -3834,7 +3900,7 @@ export default function App() {
   const navItems = [
     { label: "Dashboard", icon: "⊞" },
     { label: "Expedientes", icon: "📋" },
-    { label: "Certificados", icon: "📝" },
+    { label: "Constancias", icon: "📝" },
     ...(canEdit ? [{ label: "Importar Excel", icon: "⇪" }, { label: "Nuevo expediente", icon: "＋" }] : []),
   ];
 
@@ -3936,7 +4002,7 @@ export default function App() {
                 </div>
               </>
               )
-            ) : activeNav === "Certificados" ? (
+            ) : activeNav === "Constancias" ? (
               <CertificadosSection
                 certificados={certificados}
                 archivosByCertificado={archivosByCertificado}
