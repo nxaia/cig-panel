@@ -1466,10 +1466,14 @@ body {
 }
 .header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   margin-top: 0.25cm;
   margin-bottom: 1.2cm;
+}
+.logo-left,
+.logo-right {
+  height: 82px;
 }
 .logo-left {
   display: flex;
@@ -1480,6 +1484,7 @@ body {
   width: 72px;
   height: 72px;
   object-fit: contain;
+  flex: 0 0 72px;
 }
 .logo-left-text {
   color: #9ca3af;
@@ -1491,26 +1496,27 @@ body {
   font-size: 22px;
 }
 .logo-right {
-  height: 72px;
+  min-width: 270px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   text-align: center;
 }
 .logo-right img {
-  width: 138px;
-  max-height: 58px;
+  width: 118px;
+  max-height: 42px;
   height: auto;
   object-fit: contain;
   display: block;
 }
 .logo-right-caption {
-  margin-top: 2px;
+  margin-top: 4px;
   font-size: 6.5pt;
   letter-spacing: 1.2px;
   line-height: 1.15;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 .date {
   text-align: right;
