@@ -1886,6 +1886,7 @@ function CertificadosSection({
           onSave={async (payload) => {
             const ok = await onCreate(payload);
             if (ok) setNuevoOpen(false);
+            return ok;
           }}
           onUploadFiles={() => {}}
         />
@@ -1903,10 +1904,12 @@ function CertificadosSection({
           onSave={async (payload) => {
             const updated = await onSave(selected.id, payload);
             if (updated) setSelected(updated);
+            return updated;
           }}
           onDelete={async () => {
             const ok = await onDelete(selected.id);
             if (ok) setSelected(null);
+            return ok;
           }}
           onUploadFiles={(files) => onUploadFiles(selected.id, files)}
           onDeleteFile={(file) => onDeleteFile(selected.id, file)}
@@ -2102,6 +2105,12 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
               Primero guarda la constancia. Después vas a poder subir la documentación adjunta.
             </div>
           )}
+
+          {actionNotice ? (
+            <div style={{ background: "#ecfdf5", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 12, padding: "10px 12px", fontSize: 13, fontWeight: 700 }}>
+              {actionNotice}
+            </div>
+          ) : null}
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
