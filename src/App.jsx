@@ -230,6 +230,23 @@ const btnGhost = {
   fontWeight: 600,
 };
 
+const buttonHoverHandlers = {
+  onMouseEnter: (e) => {
+    e.currentTarget.style.transform = "translateY(-1px)";
+    e.currentTarget.style.boxShadow = "0 8px 18px rgba(15, 23, 42, .14)";
+    e.currentTarget.style.filter = "brightness(1.03)";
+  },
+  onMouseLeave: (e) => {
+    e.currentTarget.style.transform = "translateY(0)";
+    e.currentTarget.style.boxShadow = "none";
+    e.currentTarget.style.filter = "none";
+  },
+};
+
+const interactiveButtonStyle = {
+  transition: "transform .15s ease, box-shadow .15s ease, filter .15s ease, background .15s ease",
+};
+
 const labelStyle = {
   fontSize: 10,
   color: C.dim,
@@ -1465,19 +1482,21 @@ body {
   margin: 0 auto;
 }
 .header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  column-gap: 1cm;
   margin-top: 0.25cm;
   margin-bottom: 1.2cm;
 }
 .logo-left,
 .logo-right {
-  height: 82px;
+  height: 86px;
 }
 .logo-left {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 10px;
 }
 .logo-left img {
@@ -1485,6 +1504,7 @@ body {
   height: 72px;
   object-fit: contain;
   flex: 0 0 72px;
+  display: block;
 }
 .logo-left-text {
   color: #9ca3af;
@@ -1496,17 +1516,24 @@ body {
   font-size: 22px;
 }
 .logo-right {
-  min-width: 270px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  text-align: center;
+  padding-top: 0;
+}
+.logo-right-inner {
+  width: 235px;
+  height: 72px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
 }
 .logo-right img {
   width: 118px;
-  max-height: 42px;
-  height: auto;
+  height: 42px;
   object-fit: contain;
   display: block;
 }
@@ -1591,8 +1618,10 @@ p {
         </div>
       </div>
       <div class="logo-right">
-        <img src="${logoAreaPrint}" />
-        <div class="logo-right-caption">Dir. de Regularización Dominial y Hábitat<br/>La Banda del Río Salí</div>
+        <div class="logo-right-inner">
+          <img src="${logoAreaPrint}" />
+          <div class="logo-right-caption">Dir. de Regularización Dominial y Hábitat<br/>La Banda del Río Salí</div>
+        </div>
       </div>
     </div>
 
@@ -1891,23 +1920,28 @@ function CertificadosSection({
 function CertificadoModal({ mode, certificado, archivos, canManageCertificados, activeUser, uploading, onClose, onSave, onDelete, onUploadFiles, onDeleteFile, deletingFileId }) {
   const [form, setForm] = useState(certificado);
   const [localError, setLocalError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
 
   useEffect(() => {
     setForm(certificado);
     setLocalError("");
+    setActionNotice("");
   }, [certificado?.id, mode]);
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const submit = async () => {
     setLocalError("");
-    if (!cleanText(form.vecinoNombre)) return setLocalError("Ingresá el nombre del vecino.");
-    if (!cleanText(form.dni)) return setLocalError("Ingresá el DNI.");
-    if (!cleanText(form.domicilio)) return setLocalError("Ingresá el domicilio.");
-    await onSave(form);
+    setActionNotice("");
+    if (!cleanText(form.vecinoNombre)) return setLocalError("Ingresa el nombre del vecino.");
+    if (!cleanText(form.dni)) return setLocalError("Ingresa el DNI.");
+    if (!cleanText(form.domicilio)) return setLocalError("Ingresa el domicilio.");
+    const result = await onSave(form);
+    if (result) setActionNotice(mode === "edit" ? "Cambios guardados correctamente." : "Constancia guardada correctamente.");
   };
 
   const printCertificado = () => {
+    setActionNotice("Impresión preparada correctamente.");
     const fecha = new Date().toLocaleDateString('es-AR');
     const logoMunicipio = `${window.location.origin}/logo-icono.png`;
     const logoAreaPrint = logoArea;
@@ -1927,11 +1961,12 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
             <div style={{ fontSize: 11, textTransform: "uppercase", opacity: 0.85 }}>Constancia de tenencia precaria</div>
             <div style={{ fontSize: 22, fontWeight: 800 }}>{form.numero || "Nueva constancia"}</div>
           </div>
-          <button onClick={onClose} style={{ ...btnGhost, background: "rgba(255,255,255,.15)", color: "#fff", borderColor: "rgba(255,255,255,.35)" }}>Cerrar</button>
+          <button onClick={onClose} {...buttonHoverHandlers} style={{ ...btnGhost, ...interactiveButtonStyle, background: "rgba(255,255,255,.15)", color: "#fff", borderColor: "rgba(255,255,255,.35)" }}>Cerrar</button>
         </div>
 
         <div style={{ padding: 20, display: "grid", gap: 14 }}>
           {localError ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 12, padding: 10, fontSize: 13 }}>{localError}</div> : null}
+          {actionNotice ? <div style={{ background: "#ecfdf5", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 12, padding: 10, fontSize: 13, fontWeight: 700 }}>{actionNotice}</div> : null}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
             <div>
@@ -2007,7 +2042,7 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
                   <div style={{ fontSize: 12, color: C.muted }}>Boleta de luz, fotocopia DNI u otros comprobantes.</div>
                 </div>
                 {canManageCertificados ? (
-                  <label style={{ ...btnGhost, display: "inline-flex", alignItems: "center", gap: 8, cursor: uploading ? "not-allowed" : "pointer" }}>
+                  <label {...buttonHoverHandlers} style={{ ...btnGhost, ...interactiveButtonStyle, display: "inline-flex", alignItems: "center", gap: 8, cursor: uploading ? "not-allowed" : "pointer" }}>
                     {uploading ? "Subiendo..." : "Subir archivos"}
                     <input
                       type="file"
@@ -2015,9 +2050,13 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
                       multiple
                       style={{ display: "none" }}
                       disabled={uploading}
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const files = Array.from(e.target.files || []);
-                        if (files.length) onUploadFiles(files);
+                        if (files.length) {
+                          setActionNotice("Subiendo documentación...");
+                          await onUploadFiles(files);
+                          setActionNotice(files.length === 1 ? "Archivo cargado correctamente." : "Archivos cargados correctamente.");
+                        }
                         e.target.value = "";
                       }}
                     />
@@ -2036,16 +2075,18 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                        <a href={file.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none" }}>Abrir</a>
+                        <a href={file.publicUrl} target="_blank" rel="noreferrer" onClick={() => setActionNotice("Archivo abierto en una nueva pestaña.")} style={{ color: C.sky, fontWeight: 700, textDecoration: "none" }}>Abrir</a>
                         {canManageCertificados ? (
                           <button
                             type="button"
                             disabled={deletingFileId === String(file.id)}
-                            onClick={() => {
+                            onClick={async () => {
                               if (!confirm("¿Eliminar este archivo?")) return;
-                              onDeleteFile(file);
+                              const ok = await onDeleteFile(file);
+                              if (ok) setActionNotice("Archivo eliminado correctamente.");
                             }}
-                            style={{ ...btnGhost, padding: "6px 10px", fontSize: 12, color: C.red, borderColor: "#fecaca", opacity: deletingFileId === String(file.id) ? 0.6 : 1 }}
+                            {...buttonHoverHandlers}
+                            style={{ ...btnGhost, ...interactiveButtonStyle, padding: "6px 10px", fontSize: 12, color: C.red, borderColor: "#fecaca", opacity: deletingFileId === String(file.id) ? 0.6 : 1 }}
                           >
                             {deletingFileId === String(file.id) ? "Eliminando..." : "Eliminar"}
                           </button>
@@ -2064,21 +2105,23 @@ function CertificadoModal({ mode, certificado, archivos, canManageCertificados, 
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {canManageCertificados ? <button onClick={submit} style={btnPrimary}>Guardar constancia</button> : null}
-              <button onClick={printCertificado} style={btnGhost}>Imprimir constancia</button>
+              {canManageCertificados ? <button onClick={submit} {...buttonHoverHandlers} style={{ ...btnPrimary, ...interactiveButtonStyle }}>Guardar constancia</button> : null}
+              <button onClick={printCertificado} {...buttonHoverHandlers} style={{ ...btnGhost, ...interactiveButtonStyle }}>Imprimir constancia</button>
               {mode === "edit" && canManageCertificados ? (
                 <button
                   onClick={async () => {
                     if (!confirm("¿Eliminar esta constancia?")) return;
-                    await onDelete();
+                    const ok = await onDelete();
+                    if (ok) window.alert("Constancia eliminada correctamente.");
                   }}
-                  style={{ ...btnGhost, color: C.red, borderColor: "#fecaca" }}
+                  {...buttonHoverHandlers}
+                  style={{ ...btnGhost, ...interactiveButtonStyle, color: C.red, borderColor: "#fecaca" }}
                 >
                   Eliminar constancia
                 </button>
               ) : null}
             </div>
-            <button onClick={onClose} style={btnGhost}>Cerrar</button>
+            <button onClick={onClose} {...buttonHoverHandlers} style={{ ...btnGhost, ...interactiveButtonStyle }}>Cerrar</button>
           </div>
         </div>
       </div>
@@ -2393,10 +2436,11 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
 
         <div style={{ padding: "0 24px 20px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {canEdit ? <button onClick={() => onDelete(draft)} style={{ ...btnGhost, color: C.red, borderColor: "#fecaca" }}>Eliminar expediente</button> : null}
+            {canEdit ? <button onClick={() => onDelete(draft)} {...buttonHoverHandlers}
+                  style={{ ...btnGhost, ...interactiveButtonStyle, color: C.red, borderColor: "#fecaca" }}>Eliminar expediente</button> : null}
             {onNext ? <button onClick={onNext} style={btnGhost}>Siguiente expediente</button> : null}
           </div>
-          <button onClick={onClose} style={btnGhost}>Cerrar</button>
+          <button onClick={onClose} {...buttonHoverHandlers} style={{ ...btnGhost, ...interactiveButtonStyle }}>Cerrar</button>
         </div>
       </div>
     </div>
