@@ -1633,7 +1633,7 @@ p {
       </div>
     </div>
 
-    <div class="date">La Banda del Río Salí, ${fechaLarga}</div>
+    <div class="date">Banda del Río Salí, ${fechaLarga}</div>
 
     <div class="org-block">
       <div>Municipio de La Banda del Río Salí</div>
@@ -1645,7 +1645,7 @@ p {
 
     <div class="content">
       <p class="indent">
-        La Dirección de Regularización Dominial y Hábitat del Municipio de La Banda del Río Salí, otorga la presente Tenencia Precaria al Sr/a
+        La Dirección de Regularización Dominial y Hábitat del Municipio de Banda del Río Salí, otorga la presente Tenencia Precaria al Sr/a
         <span class="important">${form.vecinoNombre || "—"}</span>; DNI:<span class="important">${form.dni || "—"}</span>, con domicilio en calle:
         <span class="important">${form.domicilio || "—"}</span>; Barrio: <span class="important">${form.barrio || "—"}</span>. – Donde la propiedad se encuentra posicionada en una fracción del Padrón:
         <span class="important">${form.padronCatastral || "—"}</span>. Matrícula catastral: <span class="important">${form.matriculaCatastral || "—"}</span>. propietario Legal:
