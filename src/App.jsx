@@ -1634,7 +1634,6 @@ p {
     </div>
 
     <div class="date">La Banda del Río Salí, ${fechaLarga}</div>
-    <div class="presented-to">Presentado ante: <strong>${form.presentadoAnte || "—"}</strong></div>
 
     <div class="org-block">
       <div>Municipio de La Banda del Río Salí</div>
@@ -1659,6 +1658,8 @@ p {
 
       <div class="signature-block">
         <div class="signature-fields">
+          <div>Presentado ante: <strong>${form.presentadoAnte || "—"}</strong></div>
+          <br/>
           <div>FIRMA SOLICITANTE:</div>
           <div>ACLARACIÓN:</div>
           <div>D.N.I.:</div>
