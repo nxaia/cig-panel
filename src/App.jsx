@@ -1548,7 +1548,15 @@ body {
 .date {
   text-align: right;
   font-size: 12pt;
+  margin-bottom: 0.45cm;
+}
+.presented-to {
+  text-align: right;
+  font-size: 11pt;
   margin-bottom: 0.8cm;
+}
+.presented-to strong {
+  text-transform: uppercase;
 }
 .org-block {
   margin-bottom: 1.2cm;
@@ -1626,6 +1634,7 @@ p {
     </div>
 
     <div class="date">La Banda del Río Salí, ${fechaLarga}</div>
+    <div class="presented-to">Presentado ante: <strong>${form.presentadoAnte || "—"}</strong></div>
 
     <div class="org-block">
       <div>Municipio de La Banda del Río Salí</div>
