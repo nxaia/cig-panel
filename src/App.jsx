@@ -10,7 +10,10 @@ const supabase =
 
 const PLANOS_BUCKET = "planos-expedientes";
 const PLANOS_TABLE = "expediente_planos";
-const MAX_PLANO_FILE_SIZE_MB = 15;
+const CERTIFICADOS_TABLE = "certificados_residencia";
+const CERTIFICADOS_ARCHIVOS_TABLE = "certificado_residencia_archivos";
+const CERTIFICADOS_BUCKET = PLANOS_BUCKET;
+const MAX_PLANO_FILE_SIZE_MB = 50;
 const ALLOWED_PLANO_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv"];
 const ALLOWED_PLANO_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "xls", "xlsx", "csv"];
 
@@ -133,30 +136,51 @@ const BARRIOS = {
 };
 
 const LOGIN_USERS = [
-  { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true },
-  { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true },
-  { id: "emanuel-aguilar", nombre: "Emanuel Aguilar", rol: "Consulta", area: "Dirección", tecnico: false, canEdit: false },
+  { id: "gonzalo-monteros", nombre: "Gonzalo Monteros", rol: "Intendente", area: "Intendencia", tecnico: false, canEdit: false, requiresPassword: false, canAddExecutiveNotes: true },
+  { id: "estela-palacios", nombre: "Estela Palacios", rol: "Directora", area: "Dirección", tecnico: false, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
+  { id: "carlos-chauvet", nombre: "Carlos Chauvet", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
+  { id: "emmanuel-aguilar", nombre: "Emmanuel Aguilar", rol: "Agente de campo", area: "Agente de campo", tecnico: true, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
+  { id: "andres-ferrer", nombre: "Andrés Ferrer", rol: "Área técnica", area: "Técnica", tecnico: true, canEdit: true, requiresPassword: true, canAddExecutiveNotes: false },
+  { id: "usuario", nombre: "Usuario", rol: "Solo lectura", area: "Consulta", tecnico: false, canEdit: false, requiresPassword: false, canAddExecutiveNotes: false },
 ];
 
-const PAGE_SIZE = 5;
+const MIN_PAGE_SIZE = 5;
+const MAX_PAGE_SIZE = 14;
 const ACCESS_HISTORY_KEY = "cig_panel_access_history_v1";
 
 
 const TABLE_COLGROUP = [
   { key: "check", width: "36px" },
   { key: "expediente", width: "118px" },
-  { key: "titular", width: "190px" },
-  { key: "dni", width: "92px" },
-  { key: "contacto", width: "108px" },
+  { key: "titular", width: "220px" },
+  { key: "dni", width: "100px" },
+  { key: "contacto", width: "118px" },
   { key: "estadoCivil", width: "120px" },
-  { key: "barrio", width: "170px" },
-  { key: "padron", width: "100px" },
-  { key: "archivos", width: "150px" },
-  { key: "estado", width: "118px" },
-  { key: "area", width: "96px" },
-  { key: "ubicacion", width: "116px" },
-  { key: "notas", width: "150px" },
-  { key: "acciones", width: "96px" },
+  { key: "barrio", width: "190px" },
+  { key: "padron", width: "98px" },
+  { key: "archivos", width: "145px" },
+  { key: "estado", width: "112px" },
+  { key: "area", width: "110px" },
+  { key: "responsable", width: "126px" },
+  { key: "notas", width: "210px" },
+  { key: "acciones", width: "98px" },
+];
+
+const EXPEDIENTES_TABLE_HEADERS = [
+  "✓",
+  "N° Expediente",
+  "Titular",
+  "DNI",
+  "Contacto",
+  "Estado civil",
+  "Barrio",
+  "N° de padrón",
+  "Archivos",
+  "Estado",
+  "Área",
+  "Ubicación",
+  "Notas",
+  "Acciones",
 ];
 
 
@@ -204,6 +228,23 @@ const btnGhost = {
   borderRadius: 8,
   cursor: "pointer",
   fontWeight: 600,
+};
+
+const buttonHoverHandlers = {
+  onMouseEnter: (e) => {
+    e.currentTarget.style.transform = "translateY(-1px)";
+    e.currentTarget.style.boxShadow = "0 8px 18px rgba(15, 23, 42, .14)";
+    e.currentTarget.style.filter = "brightness(1.03)";
+  },
+  onMouseLeave: (e) => {
+    e.currentTarget.style.transform = "translateY(0)";
+    e.currentTarget.style.boxShadow = "none";
+    e.currentTarget.style.filter = "none";
+  },
+};
+
+const interactiveButtonStyle = {
+  transition: "transform .15s ease, box-shadow .15s ease, filter .15s ease, background .15s ease",
 };
 
 const labelStyle = {
@@ -285,6 +326,48 @@ function splitBarrio(value) {
 
 function cleanText(value) {
   return String(value || "").trim();
+}
+
+async function hashPassword(value) {
+  const raw = cleanText(value);
+  const encoder = new TextEncoder();
+  const data = encoder.encode(raw);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+const PASSWORD_HASH_CACHE_KEY = "cig_panel_password_hash_cache_v1";
+
+function readPasswordHashCache() {
+  try {
+    const raw = localStorage.getItem(PASSWORD_HASH_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePasswordHashCache(usuarioClave, passwordHash) {
+  try {
+    if (!usuarioClave || !passwordHash) return;
+    const current = readPasswordHashCache();
+    localStorage.setItem(PASSWORD_HASH_CACHE_KEY, JSON.stringify({ ...current, [usuarioClave]: passwordHash }));
+  } catch {
+    // respaldo local no disponible
+  }
+}
+
+function getLoginClaveById(userId) {
+  if (userId === "gonzalo-monteros") return "gonzalo";
+  if (userId === "estela-palacios") return "estela";
+  if (userId === "carlos-chauvet") return "carlos";
+  if (userId === "emmanuel-aguilar") return "emmanuel";
+  if (userId === "andres-ferrer") return "andres";
+  if (userId === "usuario") return "usuario";
+  return "";
 }
 
 function normalizeTitular(value) {
@@ -468,6 +551,79 @@ function normalizePlanoRecord(row) {
   };
 }
 
+
+function normalizeCertificadoRecord(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    numero: row.numero || "",
+    vecinoNombre: row.vecino_nombre || "",
+    dni: row.dni || "",
+    domicilio: row.domicilio || "",
+    barrio: row.barrio || "",
+    padronCatastral: row.padron_catastral || "",
+    matriculaCatastral: row.matricula_catastral || "",
+    propietarioLegal: row.propietario_legal || "",
+    telefono: row.telefono || "",
+    motivo: row.motivo || "",
+    presentadoAnte: row.presentado_ante || "",
+    estado: row.estado || "pendiente",
+    fechaVisita: row.fecha_visita || "",
+    observaciones: row.observaciones || "",
+    agenteNombre: row.agente_nombre || "",
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  };
+}
+
+function normalizeCertificadoArchivoRecord(row) {
+  if (!row) return null;
+  const path = row.archivo_path || "";
+  return {
+    id: row.id,
+    certificadoId: row.certificado_id,
+    archivoPath: path,
+    nombreOriginal: row.nombre_original || path.split("/").pop() || "Archivo",
+    tipoMime: row.tipo_mime || "",
+    tamanoBytes: Number(row.tamano_bytes || 0),
+    createdAt: row.created_at || null,
+    uploadedBy: row.uploaded_by || null,
+    publicUrl: row.public_url || buildStoragePublicUrl(CERTIFICADOS_BUCKET, path),
+  };
+}
+
+function buildCertificadosArchivosIndex(rows) {
+  const index = {};
+  for (const row of rows || []) {
+    const normalized = normalizeCertificadoArchivoRecord(row);
+    if (!normalized?.certificadoId) continue;
+    if (!index[normalized.certificadoId]) index[normalized.certificadoId] = [];
+    index[normalized.certificadoId].push(normalized);
+  }
+  Object.keys(index).forEach((certificadoId) => {
+    index[certificadoId].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  });
+  return index;
+}
+
+function buildStoragePublicUrl(bucket, filePath) {
+  if (!supabase || !filePath) return "";
+  const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+  return data?.publicUrl || "";
+}
+
+function nextCertificadoNumber(rows = []) {
+  const currentYear = new Date().getFullYear();
+  const prefix = `CR-${currentYear}-`;
+  const max = rows.reduce((acc, row) => {
+    const numero = cleanText(row.numero);
+    if (!numero.startsWith(prefix)) return acc;
+    const n = Number(numero.replace(prefix, ""));
+    return Number.isFinite(n) ? Math.max(acc, n) : acc;
+  }, 0);
+  return `${prefix}${String(max + 1).padStart(4, "0")}`;
+}
+
 function buildPlanosIndex(rows) {
   const index = {};
   for (const row of rows || []) {
@@ -482,6 +638,47 @@ function buildPlanosIndex(rows) {
   });
 
   return index;
+}
+
+function normalizeObservacionIntendente(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    expedienteId: row.expediente_id,
+    autorNombre: row.autor_nombre || "Gonzalo Monteros",
+    autorRol: row.autor_rol || "Intendente",
+    observacion: row.observacion || "",
+    createdAt: row.created_at || null,
+  };
+}
+
+function buildObservacionesIndex(rows) {
+  const index = {};
+  for (const row of rows || []) {
+    const normalized = normalizeObservacionIntendente(row);
+    if (!normalized?.expedienteId) continue;
+    if (!index[normalized.expedienteId]) index[normalized.expedienteId] = [];
+    index[normalized.expedienteId].push(normalized);
+  }
+
+  Object.keys(index).forEach((key) => {
+    index[key].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  });
+
+  return index;
+}
+
+async function fetchObservacionesIntendenteIndex(expedienteIds = []) {
+  if (!supabase || !Array.isArray(expedienteIds) || expedienteIds.length === 0) return { data: {}, error: null };
+
+  const { data, error } = await supabase
+    .from("observaciones_intendente")
+    .select("id, expediente_id, autor_nombre, autor_rol, observacion, created_at")
+    .in("expediente_id", expedienteIds)
+    .order("created_at", { ascending: false });
+
+  if (error) return { data: {}, error };
+  return { data: buildObservacionesIndex(data || []), error: null };
 }
 
 async function fetchPlanosIndex(expedienteIds = []) {
@@ -508,6 +705,32 @@ async function fetchPlanosForExpediente(expedienteId) {
 
   if (error) return { data: [], error };
   return { data: (data || []).map(normalizePlanoRecord), error: null };
+}
+
+
+async function fetchCertificados() {
+  if (!supabase) return { data: [], error: null };
+
+  const { data, error } = await supabase
+    .from(CERTIFICADOS_TABLE)
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) return { data: [], error };
+  return { data: (data || []).map(normalizeCertificadoRecord), error: null };
+}
+
+async function fetchCertificadoArchivosIndex(certificadoIds = []) {
+  if (!supabase || !Array.isArray(certificadoIds) || certificadoIds.length === 0) return { data: {}, error: null };
+
+  const { data, error } = await supabase
+    .from(CERTIFICADOS_ARCHIVOS_TABLE)
+    .select("id, certificado_id, archivo_path, nombre_original, tipo_mime, tamano_bytes, created_at, uploaded_by")
+    .in("certificado_id", certificadoIds)
+    .order("created_at", { ascending: false });
+
+  if (error) return { data: {}, error };
+  return { data: buildCertificadosArchivosIndex(data || []), error: null };
 }
 
 function normalizeExpediente(row) {
@@ -593,6 +816,17 @@ function buildDuplicateKey({ titular, padronNumero }) {
   if (!normalizedTitular || !normalizedPadron) return "";
   return `${normalizedTitular}__${normalizedPadron}`;
 }
+
+function findDuplicatePadron(records = [], padronNumero, excludeId = null) {
+  const target = normalizePadron(padronNumero);
+  if (!target) return null;
+  return (records || []).find((row) => {
+    if (!row) return false;
+    if (excludeId !== null && String(row.id) === String(excludeId)) return false;
+    return normalizePadron(row.padronNumero ?? row.padron_numero) === target;
+  }) || null;
+}
+
 
 function getDuplicateSignature(row) {
   const dni = normalizeDni(row?.dni);
@@ -877,68 +1111,210 @@ function Doc({ doc }) {
   );
 }
 
-function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError }) {
+function IntendenteDashboard({ data }) {
+  const estadosKeys = Object.keys(ESTADOS);
+  const rows = useMemo(() => {
+    const grouped = {};
+    for (const exp of data || []) {
+      const zona = splitBarrio(exp.barrio);
+      const barrio = cleanText(zona.barrio) || cleanText(exp.barrio) || "Sin barrio";
+      if (!grouped[barrio]) {
+        grouped[barrio] = { barrio, total: 0, listos: 0, estados: Object.fromEntries(estadosKeys.map((key) => [key, 0])) };
+      }
+      grouped[barrio].total += 1;
+      grouped[barrio].estados[exp.estado] = (grouped[barrio].estados[exp.estado] || 0) + 1;
+      if (exp.estado === "listo") grouped[barrio].listos += 1;
+    }
+
+    return Object.values(grouped)
+      .map((row) => ({ ...row, avance: row.total ? Math.round((row.listos / row.total) * 100) : 0 }))
+      .sort((a, b) => b.total - a.total || a.barrio.localeCompare(b.barrio));
+  }, [data]);
+
+  const totalExpedientes = data.length;
+  const totalListos = data.filter((exp) => exp.estado === "listo").length;
+  const avanceGeneral = totalExpedientes ? Math.round((totalListos / totalExpedientes) * 100) : 0;
+  const barriosConDetenidos = rows.filter((row) => row.estados.detenido > 0).length;
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase" }}>Expedientes</div>
+          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{totalExpedientes}</div>
+          <div style={{ marginTop: 8, color: C.dim, fontSize: 12 }}>Total cargado en el sistema</div>
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase" }}>Barrios</div>
+          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{rows.length}</div>
+          <div style={{ marginTop: 8, color: C.dim, fontSize: 12 }}>Con expedientes registrados</div>
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase" }}>Avance general</div>
+          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{avanceGeneral}%</div>
+          <div style={{ marginTop: 10, height: 9, background: "#e2e8f0", borderRadius: 999, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${avanceGeneral}%`, background: C.green }} />
+          </div>
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase" }}>Barrios con detenidos</div>
+          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{barriosConDetenidos}</div>
+          <div style={{ marginTop: 8, color: C.dim, fontSize: 12 }}>Requieren seguimiento ejecutivo</div>
+        </div>
+      </div>
+
+      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid #f1f5f9" }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.slate }}>Estado por barrio</div>
+          <div style={{ marginTop: 4, fontSize: 12, color: C.muted }}>Avance calculado sobre expedientes listos respecto del total del barrio.</div>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", minWidth: 1080, borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: "#fafafa", borderBottom: "1px solid #f1f5f9" }}>
+                {["Barrio", "Total", ...estadosKeys.map((key) => ESTADOS[key].label), "Avance"].map((head) => (
+                  <th key={head} style={{ padding: "9px 10px", textAlign: "left", color: C.dim, fontSize: 10, textTransform: "uppercase", letterSpacing: ".05em" }}>{head}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan={estadosKeys.length + 3} style={{ padding: 20, color: C.dim }}>No hay expedientes cargados.</td></tr>
+              ) : rows.map((row) => (
+                <tr key={row.barrio} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <td style={{ padding: "10px", fontWeight: 800, color: C.slate }}>{row.barrio}</td>
+                  <td style={{ padding: "10px", fontWeight: 700 }}>{row.total}</td>
+                  {estadosKeys.map((key) => (
+                    <td key={key} style={{ padding: "10px", color: row.estados[key] ? C.slate : C.dim, fontWeight: row.estados[key] ? 700 : 500 }}>{row.estados[key] || 0}</td>
+                  ))}
+                  <td style={{ padding: "10px", minWidth: 170 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1, height: 8, background: "#e2e8f0", borderRadius: 999, overflow: "hidden" }}>
+                        <div style={{ width: `${row.avance}%`, height: "100%", background: row.avance >= 70 ? C.green : row.avance >= 35 ? C.amber : C.red }} />
+                      </div>
+                      <div style={{ width: 38, textAlign: "right", fontWeight: 800 }}>{row.avance}%</div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, loginError, loginPassword, onPasswordChange, onOpenChangePassword, onOpenManualReset }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const selectedUser = LOGIN_USERS.find((user) => user.id === selectedUserId);
+  const selectedNeedsPassword = Boolean(selectedUser?.requiresPassword);
+
+  const getUserSubtitle = (user) => {
+    if (user.id === "gonzalo-monteros") return "Intendente · tablero ejecutivo";
+    if (user.id === "estela-palacios") return "Directora";
+    if (user.id === "carlos-chauvet") return "Responsable de área técnica";
+    if (user.id === "emmanuel-aguilar") return "Agente de campo";
+    if (user.id === "andres-ferrer") return "Área técnica";
+    if (user.id === "usuario") return "Solo lectura";
+    return "";
+  };
+
   return (
     <div
       style={{
-        minHeight: "100vh",
+        height: "100vh",
         background: "linear-gradient(180deg,#edf5fb 0%, #f5f7fa 100%)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 24,
+        padding: 6,
         boxSizing: "border-box",
+        overflowY: "auto",
       }}
     >
       <div
         style={{
           width: "100%",
-          maxWidth: 760,
+          maxWidth: 640,
           background: "#fff",
-          borderRadius: 28,
+          borderRadius: 22,
           overflow: "hidden",
           boxShadow: "0 24px 80px rgba(15,23,42,.12)",
           border: `1px solid ${C.border}`,
+          maxHeight: "calc(100vh - 10px)",
         }}
       >
-        <div style={{ height: 8, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
-        <div style={{ padding: "34px 30px 28px", textAlign: "center" }}>
+        <div style={{ height: 6, background: "linear-gradient(90deg,#0ea5e9,#14b8a6)" }} />
+        <div style={{ padding: "6px 18px 8px", textAlign: "center" }}>
           <div
             style={{
-              width: 132,
-              height: 132,
-              margin: "0 auto 28px",
-              borderRadius: 28,
+              width: 58,
+              height: 58,
+              margin: "0 auto 6px",
+              borderRadius: 16,
               background: "#fff",
               border: `1px solid ${C.border}`,
-              boxShadow: "0 16px 40px rgba(15,23,42,.08)",
+              boxShadow: "0 10px 24px rgba(15,23,42,.08)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <img src="/logo-icono.png" alt="Municipio" style={{ width: 102, height: 102, objectFit: "contain" }} />
+            <img src="/logo-icono.png" alt="Municipio" style={{ width: 44, height: 44, objectFit: "contain" }} />
           </div>
 
-          <div style={{ fontSize: 14, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>MUNICIPALIDAD DE</div>
-          <div style={{ fontSize: 26, color: C.slate, fontWeight: 800, marginTop: 6 }}>Banda del Río Salí</div>
-          <div style={{ width: 92, height: 4, borderRadius: 999, background: "#14b8a6", margin: "20px auto 18px" }} />
-          <div style={{ fontSize: 18, color: C.slate, fontWeight: 700 }}>Dirección de Regularización Dominial</div>
-          <div style={{ maxWidth: 520, margin: "14px auto 0", color: C.muted, fontSize: 14, lineHeight: 1.55 }}>
-            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado para continuar.
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>MUNICIPALIDAD DE</div>
+          <div style={{ fontSize: 16, color: C.slate, fontWeight: 800, marginTop: 2 }}>Banda del Río Salí</div>
+          <div style={{ width: 72, height: 4, borderRadius: 999, background: "#14b8a6", margin: "5px auto" }} />
+
+          <div
+            style={{
+              width: 58,
+              height: 58,
+              margin: "0 auto",
+              borderRadius: 16,
+              background: "#fff",
+              border: `1px solid ${C.border}`,
+              boxShadow: "0 10px 24px rgba(15,23,42,.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <img
+              src={logoArea}
+              alt="Logo del área"
+              style={{
+                width: 50,
+                height: 50,
+                objectFit: "contain",
+                display: "block",
+                background: "#fff",
+                borderRadius: 14,
+              }}
+            />
           </div>
 
-          <div style={{ maxWidth: 480, margin: "28px auto 0", display: "grid", gap: 12 }}>
+          <div style={{ marginTop: 5, fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: ".12em" }}>DIRECCIÓN DE</div>
+          <div style={{ fontSize: 15, color: C.slate, fontWeight: 800, marginTop: 1 }}>Regularización Dominial y Hábitat</div>
+
+          <div style={{ maxWidth: 520, margin: "5px auto 0", color: C.muted, fontSize: 10, lineHeight: 1.15 }}>
+            Ingreso institucional al sistema interno de gestión de expedientes. Seleccioná el usuario autorizado e ingresá la contraseña.
+          </div>
+
+          <div style={{ maxWidth: 480, margin: "6px auto 0", display: "grid", gap: 6 }}>
             {LOGIN_USERS.map((user) => {
               const active = selectedUserId === user.id;
+              const subtitle = getUserSubtitle(user);
               return (
                 <button
                   key={user.id}
                   onClick={() => onSelectUser(user.id)}
                   style={{
                     textAlign: "left",
-                    padding: "16px 18px",
-                    borderRadius: 16,
+                    padding: "7px 14px",
+                    borderRadius: 14,
                     border: `1px solid ${active ? "#7dd3fc" : C.border}`,
                     background: active ? "#f0f9ff" : "#fff",
                     cursor: "pointer",
@@ -949,16 +1325,16 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: 16, color: C.slate, fontWeight: 700 }}>{user.nombre}</div>
-                    <div style={{ marginTop: 4, fontSize: 13, color: C.muted }}>
-                      {user.rol} • {user.area}
-                    </div>
+                    <div style={{ fontSize: 13, color: C.slate, fontWeight: 700 }}>{user.nombre}</div>
+                    {subtitle ? (
+                      <div style={{ marginTop: 1, fontSize: 10, color: C.muted }}>{subtitle}</div>
+                    ) : null}
                   </div>
                   <div
                     style={{
-                      minWidth: 24,
-                      width: 24,
-                      height: 24,
+                      minWidth: 18,
+                      width: 18,
+                      height: 18,
                       borderRadius: "50%",
                       border: `2px solid ${active ? C.sky : "#cbd5e1"}`,
                       background: active ? C.sky : "#fff",
@@ -970,38 +1346,93 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
             })}
           </div>
 
-          {loginError ? (
-            <div
-              style={{
-                maxWidth: 480,
-                margin: "18px auto 0",
-                background: "#fef2f2",
-                color: "#991b1b",
-                border: "1px solid #fecaca",
-                borderRadius: 12,
-                padding: "12px 14px",
-                fontSize: 13,
+          <div style={{ maxWidth: 480, margin: "6px auto 0", textAlign: "left" }}>
+            <div style={{ ...labelStyle, marginBottom: 5 }}>Contraseña</div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!loginLoading && selectedUserId) onIngresar();
               }}
             >
-              {loginError}
-            </div>
-          ) : null}
+              <div style={{ position: "relative" }}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={loginPassword}
+                  onChange={(e) => onPasswordChange(e.target.value)}
+                  placeholder={selectedNeedsPassword ? "Ingresá la contraseña" : "Ingreso sin contraseña"}
+                  style={{ ...inputStyle, background: "#fff", paddingRight: 38, paddingTop: 6, paddingBottom: 6 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    color: C.muted,
+                    fontSize: 16,
+                    lineHeight: 1,
+                    padding: 0,
+                  }}
+                >
+                  {showPassword ? "🙈" : "👁"}
+                </button>
+              </div>
+              <div style={{ marginTop: 3, fontSize: 9, color: C.dim, lineHeight: 1.1 }}>
+                Para Estela, Carlos, Emmanuel y Andrés, la primera contraseña que cargues quedará registrada. Intendente y Usuario entran en modo consulta.
+              </div>
 
-          <div style={{ marginTop: 24 }}>
-            <button
-              onClick={onIngresar}
-              disabled={loginLoading || !selectedUserId}
-              style={{
-                ...btnPrimary,
-                padding: "13px 28px",
-                fontSize: 15,
-                borderRadius: 12,
-                opacity: loginLoading || !selectedUserId ? 0.7 : 1,
-                cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
-              }}
-            >
-              {loginLoading ? "Ingresando..." : "Ingresar al panel"}
-            </button>
+              {selectedNeedsPassword ? (
+                <div style={{ marginTop: 5, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                  <button type="button" onClick={onOpenChangePassword} style={{ ...btnGhost, padding: "5px 10px", fontSize: 11 }}>
+                    Cambiar contraseña
+                  </button>
+                  <button type="button" onClick={onOpenManualReset} style={{ ...btnGhost, padding: "5px 10px", fontSize: 11 }}>
+                    Reset manual admin
+                  </button>
+                </div>
+              ) : null}
+
+              {loginError ? (
+                <div
+                  style={{
+                    maxWidth: 480,
+                    margin: "6px auto 0",
+                    background: "#fef2f2",
+                    color: "#991b1b",
+                    border: "1px solid #fecaca",
+                    borderRadius: 12,
+                    padding: "8px 10px",
+                    fontSize: 12,
+                  }}
+                >
+                  {loginError}
+                </div>
+              ) : null}
+
+              <div style={{ marginTop: 6, display: "flex", justifyContent: "center" }}>
+                <button
+                  type="submit"
+                  disabled={loginLoading || !selectedUserId}
+                  style={{
+                    ...btnPrimary,
+                    padding: "8px 22px",
+                    fontSize: 13,
+                    borderRadius: 12,
+                    minWidth: 200,
+                    opacity: loginLoading || !selectedUserId ? 0.7 : 1,
+                    cursor: loginLoading || !selectedUserId ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {loginLoading ? "Ingresando..." : "Ingresar al panel"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
@@ -1009,13 +1440,817 @@ function LoginScreen({ selectedUserId, onSelectUser, onIngresar, loginLoading, l
   );
 }
 
-function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [], onNext, modalIndex = 0, modalTotal = 0 }) {
+
+const CERTIFICADO_ESTADOS = {
+  pendiente: { label: "Pendiente", bg: "#fef3c7", color: "#92400e", border: "#fde68a" },
+  notificado: { label: "Notificado", bg: "#dbeafe", color: "#1d4ed8", border: "#bfdbfe" },
+  visitado: { label: "Visitado", bg: "#e0f2fe", color: "#0369a1", border: "#bae6fd" },
+  listo: { label: "Listo para imprimir", bg: "#dcfce7", color: "#166534", border: "#bbf7d0" },
+  entregado: { label: "Entregado", bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
+};
+
+
+function buildCertificadoPrintHtml(form, fecha, logoMunicipio, logoAreaPrint) {
+  const fechaLarga = new Date().toLocaleDateString("es-AR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  return `
+<html>
+<head>
+<title>${form.numero || "Constancia de tenencia precaria"}</title>
+<style>
+@page {
+  size: A4;
+  margin: 1.5cm 1.6cm 1.6cm 1.6cm;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #fff;
+  color: #000;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 12pt;
+  line-height: 1.35;
+}
+.page {
+  width: 100%;
+  max-width: 18cm;
+  margin: 0 auto;
+}
+.header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  column-gap: 1cm;
+  margin-top: 0.25cm;
+  margin-bottom: 1.2cm;
+}
+.logo-left,
+.logo-right {
+  height: 86px;
+}
+.logo-left {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+}
+.logo-left img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  flex: 0 0 72px;
+  display: block;
+}
+.logo-left-text {
+  color: #9ca3af;
+  font-size: 19px;
+  line-height: 1.05;
+  font-weight: 700;
+}
+.logo-left-text .city {
+  font-size: 22px;
+}
+.logo-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  text-align: center;
+  padding-top: 0;
+}
+.logo-right-inner {
+  width: 235px;
+  height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.logo-right img {
+  width: 118px;
+  height: 42px;
+  object-fit: contain;
+  display: block;
+}
+.logo-right-caption {
+  margin-top: 4px;
+  font-size: 6.5pt;
+  letter-spacing: 1.2px;
+  line-height: 1.15;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.date {
+  text-align: right;
+  font-size: 12pt;
+  margin-bottom: 0.45cm;
+}
+.presented-to {
+  text-align: right;
+  font-size: 11pt;
+  margin-bottom: 0.8cm;
+}
+.presented-to strong {
+  text-transform: uppercase;
+}
+.org-block {
+  margin-bottom: 1.2cm;
+  font-size: 13pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #444;
+  line-height: 1.65;
+}
+.title {
+  text-align: center;
+  font-size: 12pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin: 0 0 0.7cm 0;
+}
+.content {
+  width: 15.9cm;
+  margin-left: 0.25cm;
+}
+p {
+  margin: 0 0 12pt 0;
+  text-align: justify;
+}
+.indent {
+  text-indent: 1.1cm;
+}
+.important {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.signature-block {
+  margin-top: 2.1cm;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2cm;
+  align-items: end;
+}
+.signature-line {
+  border-top: 1px solid #000;
+  padding-top: 6px;
+  font-weight: 700;
+  font-size: 10pt;
+}
+.signature-fields {
+  display: grid;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 10pt;
+}
+@media print {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="logo-left">
+        <img src="${logoMunicipio}" />
+        <div class="logo-left-text">
+          <div>Municipalidad</div>
+          <div class="city">Banda del Río Salí</div>
+        </div>
+      </div>
+      <div class="logo-right">
+        <div class="logo-right-inner">
+          <img src="${logoAreaPrint}" />
+          <div class="logo-right-caption">Dir. de Regularización Dominial y Hábitat<br/>La Banda del Río Salí</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="date">Banda del Río Salí, ${fechaLarga}</div>
+
+    <div class="org-block">
+      <div>Municipio de La Banda del Río Salí</div>
+      <div>Secretaría de Gobierno</div>
+      <div>Dirección de Regularización Dominial y Hábitat</div>
+    </div>
+
+    <div class="title">Constancia de tenencia precaria</div>
+
+    <div class="content">
+      <p class="indent">
+        La Dirección de Regularización Dominial y Hábitat del Municipio de Banda del Río Salí, otorga la presente Tenencia Precaria al Sr/a
+        <span class="important">${form.vecinoNombre || "—"}</span>; DNI:<span class="important">${form.dni || "—"}</span>, con domicilio en calle:
+        <span class="important">${form.domicilio || "—"}</span>; Barrio: <span class="important">${form.barrio || "—"}</span>. – Donde la propiedad se encuentra posicionada en una fracción del Padrón:
+        <span class="important">${form.padronCatastral || "—"}</span>. Matrícula catastral: <span class="important">${form.matriculaCatastral || "—"}</span>. propietario Legal:
+        <span class="important">${form.propietarioLegal || "—"}</span>.
+      </p>
+
+      <p class="indent">
+        La presente tenencia es de carácter precario, personal e intransferible, y no confiere al/la tenedor/a ningún derecho real ni expectativa de dominio sobre el inmueble mencionado. El/la tenedor/a reconoce que la ocupación se encuentra permitida por razones sociales y de necesidad habitacional, y que la presente autorización administrativa no implica reconocimiento de derecho alguno sobre la titularidad dominial del bien.
+      </p>
+
+      <div class="signature-block">
+        <div class="signature-fields">
+          <div>Presentado ante: <strong>${form.presentadoAnte || "—"}</strong></div>
+          <br/>
+          <div>FIRMA SOLICITANTE:</div>
+          <div>ACLARACIÓN:</div>
+          <div>D.N.I.:</div>
+        </div>
+        <div class="signature-line">Firma y Sello del Responsable</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    window.onload = function() {
+      window.print();
+    };
+  </script>
+</body>
+</html>
+`;
+}
+
+function CertificadosSection({
+  certificados,
+  archivosByCertificado,
+  canManageCertificados,
+  activeUser,
+  onCreate,
+  onSave,
+  onDelete,
+  onUploadFiles,
+  onDeleteFile,
+  uploadingCertificadoId,
+  deletingCertificadoFileId,
+}) {
+  const [nuevoOpen, setNuevoOpen] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [selectedCertificados, setSelectedCertificados] = useState([]);
+  const [search, setSearch] = useState("");
+  const [estado, setEstado] = useState("");
+
+  const filtered = useMemo(() => {
+    const needle = toSearchable(search);
+    return (certificados || []).filter((cert) => {
+      const matchSearch = !needle || [
+        cert.numero,
+        cert.vecinoNombre,
+        cert.dni,
+        cert.domicilio,
+        cert.barrio,
+        cert.telefono,
+        cert.agenteNombre,
+        cert.observaciones,
+      ].some((value) => toSearchable(value).includes(needle));
+      const matchEstado = !estado || cert.estado === estado;
+      return matchSearch && matchEstado;
+    });
+  }, [certificados, search, estado]);
+
+  const stats = useMemo(() => ({
+    total: certificados.length,
+    pendientes: certificados.filter((cert) => cert.estado === "pendiente").length,
+    listos: certificados.filter((cert) => cert.estado === "listo" || cert.estado === "entregado").length,
+    conArchivos: certificados.filter((cert) => (archivosByCertificado[cert.id] || []).length > 0).length,
+  }), [certificados, archivosByCertificado]);
+
+  const toggleSelectedCertificado = (certificadoId) => {
+    setSelectedCertificados((prev) => (
+      prev.includes(certificadoId)
+        ? prev.filter((id) => id !== certificadoId)
+        : [...prev, certificadoId]
+    ));
+  };
+
+  const toggleAllVisibleCertificados = () => {
+    const visibleIds = filtered.map((cert) => cert.id).filter(Boolean);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedCertificados.includes(id));
+    setSelectedCertificados((prev) => {
+      if (allSelected) return prev.filter((id) => !visibleIds.includes(id));
+      return Array.from(new Set([...prev, ...visibleIds]));
+    });
+  };
+
+  const printSelectedCertificados = () => {
+    const selectedRows = certificados.filter((cert) => selectedCertificados.includes(cert.id));
+    if (!selectedRows.length) return;
+    selectedRows.forEach((cert, index) => {
+      setTimeout(() => {
+        const temp = { ...cert };
+        const fecha = new Date().toLocaleDateString('es-AR');
+        const logoMunicipio = `${window.location.origin}/logo-icono.png`;
+        const logoAreaPrint = logoArea;
+        const html = buildCertificadoPrintHtml(temp, fecha, logoMunicipio, logoAreaPrint);
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+        }
+      }, index * 250);
+    });
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 22 }}>Constancias</h2>
+          <div style={{ color: C.muted, fontSize: 13, marginTop: 4 }}>Control de solicitudes, visitas, documentación e impresión.</div>
+        </div>
+        {canManageCertificados ? (
+          <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nueva constancia</button>
+        ) : null}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        {[["Constancias", stats.total, "Solicitudes registradas"], ["Pendientes", stats.pendientes, "Requieren gestión"], ["Listos / entregados", stats.listos, "Proceso avanzado"], ["Con archivos", stats.conArchivos, "Documentación cargada"]].map(([label, value, note]) => (
+          <div key={label} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px 18px" }}>
+            <div style={{ fontSize: 11, color: C.muted }}>{label}</div>
+            <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}>{value}</div>
+            <div style={{ marginTop: 6, fontSize: 12, color: C.dim }}>{note}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
+        <div style={{ padding: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", borderBottom: `1px solid ${C.border}` }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar vecino, DNI, domicilio, barrio o constancia..."
+            style={{ ...inputStyle, flex: "1 1 420px", background: "#fff" }}
+          />
+          <select value={estado} onChange={(e) => setEstado(e.target.value)} style={{ ...inputStyle, width: 220, background: "#fff" }}>
+            <option value="">Todos los estados</option>
+            {Object.entries(CERTIFICADO_ESTADOS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
+          </select>
+          <button onClick={() => { setSearch(""); setEstado(""); }} style={btnGhost}>Limpiar filtros</button>
+          <button onClick={toggleAllVisibleCertificados} style={btnGhost}>Seleccionar visibles</button>
+          <button
+            onClick={printSelectedCertificados}
+            disabled={!selectedCertificados.length}
+            style={{ ...btnPrimary, opacity: selectedCertificados.length ? 1 : 0.55, cursor: selectedCertificados.length ? "pointer" : "not-allowed" }}
+          >
+            Imprimir seleccionados
+          </button>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1280 }}>
+            <thead>
+              <tr style={{ background: "#f8fafc", color: C.dim, fontSize: 11, textTransform: "uppercase" }}>
+                {["✓", "N° constancia", "Vecino", "DNI", "Domicilio", "Barrio", "Matrícula catastral", "Propietario legal", "Estado", "Archivos", "Agente", "Acciones"].map((h) => (
+                  <th key={h} style={{ textAlign: "left", padding: "10px 12px", borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length ? filtered.map((cert) => {
+                const estadoCfg = CERTIFICADO_ESTADOS[cert.estado] || CERTIFICADO_ESTADOS.pendiente;
+                const archivos = archivosByCertificado[cert.id] || [];
+                return (
+                  <tr key={cert.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <td style={{ padding: "10px 12px" }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedCertificados.includes(cert.id)}
+                        onChange={() => toggleSelectedCertificado(cert.id)}
+                      />
+                    </td>
+                    <td style={{ padding: "10px 12px", fontWeight: 700 }}>{cert.numero || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.vecinoNombre || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.dni || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.domicilio || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.barrio || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.matriculaCatastral || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.propietarioLegal || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <span style={{ background: estadoCfg.bg, color: estadoCfg.color, border: `1px solid ${estadoCfg.border}`, borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 700 }}>{estadoCfg.label}</span>
+                    </td>
+                    <td style={{ padding: "10px 12px" }}>{archivos.length}</td>
+                    <td style={{ padding: "10px 12px" }}>{cert.agenteNombre || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button onClick={() => setSelected(cert)} style={{ ...btnPrimary, padding: "7px 12px", fontSize: 12 }}>Ver</button>
+                        {canManageCertificados ? (
+                          <button
+                            onClick={async () => {
+                              if (!confirm("¿Eliminar esta constancia?")) return;
+                              const ok = await onDelete(cert.id);
+                              if (ok && selected?.id === cert.id) setSelected(null);
+                            }}
+                            style={{ ...btnGhost, padding: "7px 12px", fontSize: 12, color: C.red, borderColor: "#fecaca" }}
+                          >
+                            Eliminar
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={12} style={{ padding: 24 }}>
+                    <EmptyBlock title="Sin constancias" text="Todavía no hay constancias cargadas o no coinciden con los filtros." />
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {nuevoOpen ? (
+        <CertificadoModal
+          mode="new"
+          canManageCertificados={canManageCertificados}
+          activeUser={activeUser}
+          certificado={{
+            numero: nextCertificadoNumber(certificados),
+            vecinoNombre: "",
+            dni: "",
+            domicilio: "",
+            barrio: "",
+            padronCatastral: "",
+            matriculaCatastral: "",
+            propietarioLegal: "",
+            telefono: "",
+            motivo: "Constancia de tenencia precaria",
+            presentadoAnte: "",
+            estado: "pendiente",
+            fechaVisita: "",
+            observaciones: "",
+            agenteNombre: activeUser?.nombre || "",
+          }}
+          archivos={[]}
+          uploading={false}
+          onClose={() => setNuevoOpen(false)}
+          onSave={async (payload) => {
+            const ok = await onCreate(payload);
+            if (ok) setNuevoOpen(false);
+            return ok;
+          }}
+          onUploadFiles={() => {}}
+        />
+      ) : null}
+
+      {selected ? (
+        <CertificadoModal
+          mode="edit"
+          canManageCertificados={canManageCertificados}
+          activeUser={activeUser}
+          certificado={selected}
+          archivos={archivosByCertificado[selected.id] || []}
+          uploading={uploadingCertificadoId === String(selected.id)}
+          onClose={() => setSelected(null)}
+          onSave={async (payload) => {
+            const updated = await onSave(selected.id, payload);
+            if (updated) setSelected(updated);
+            return updated;
+          }}
+          onDelete={async () => {
+            const ok = await onDelete(selected.id);
+            if (ok) setSelected(null);
+            return ok;
+          }}
+          onUploadFiles={(files) => onUploadFiles(selected.id, files)}
+          onDeleteFile={(file) => onDeleteFile(selected.id, file)}
+          deletingFileId={deletingCertificadoFileId}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CertificadoModal({ mode, certificado, archivos, canManageCertificados, activeUser, uploading, onClose, onSave, onDelete, onUploadFiles, onDeleteFile, deletingFileId }) {
+  const [form, setForm] = useState(certificado);
+  const [localError, setLocalError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
+
+  useEffect(() => {
+    setForm(certificado);
+    setLocalError("");
+    setActionNotice("");
+  }, [certificado?.id, mode]);
+
+  const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const submit = async () => {
+    setLocalError("");
+    setActionNotice("");
+    if (!cleanText(form.vecinoNombre)) return setLocalError("Ingresa el nombre del vecino.");
+    if (!cleanText(form.dni)) return setLocalError("Ingresa el DNI.");
+    if (!cleanText(form.domicilio)) return setLocalError("Ingresa el domicilio.");
+    const result = await onSave(form);
+    if (result) setActionNotice(mode === "edit" ? "Cambios guardados correctamente." : "Constancia guardada correctamente.");
+  };
+
+  const printCertificado = () => {
+    setActionNotice("Impresión preparada correctamente.");
+    const fecha = new Date().toLocaleDateString('es-AR');
+    const logoMunicipio = `${window.location.origin}/logo-icono.png`;
+    const logoAreaPrint = logoArea;
+    const html = buildCertificadoPrintHtml(form, fecha, logoMunicipio, logoAreaPrint);
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(15,23,42,.35)", backdropFilter: "blur(4px)", overflowY: "auto", padding: 14 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 980, margin: "20px auto", background: "#fff", borderRadius: 20, overflow: "hidden", boxShadow: "0 24px 80px rgba(15,23,42,.18)" }}>
+        <div style={{ background: "linear-gradient(135deg,#0ea5e9,#14b8a6)", padding: "18px 22px", color: "#fff", display: "flex", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, textTransform: "uppercase", opacity: 0.85 }}>Constancia de tenencia precaria</div>
+            <div style={{ fontSize: 22, fontWeight: 800 }}>{form.numero || "Nueva constancia"}</div>
+          </div>
+          <button onClick={onClose} {...buttonHoverHandlers} style={{ ...btnGhost, ...interactiveButtonStyle, background: "rgba(255,255,255,.15)", color: "#fff", borderColor: "rgba(255,255,255,.35)" }}>Cerrar</button>
+        </div>
+
+        <div style={{ padding: 20, display: "grid", gap: 14 }}>
+          {localError ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 12, padding: 10, fontSize: 13 }}>{localError}</div> : null}
+          {actionNotice ? <div style={{ background: "#ecfdf5", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 12, padding: 10, fontSize: 13, fontWeight: 700 }}>{actionNotice}</div> : null}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+            <div>
+              <div style={labelStyle}>N° constancia</div>
+              <input value={form.numero || ""} disabled={!canManageCertificados} onChange={(e) => set("numero", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Estado</div>
+              <select value={form.estado || "pendiente"} disabled={!canManageCertificados} onChange={(e) => set("estado", e.target.value)} style={inputStyle}>
+                {Object.entries(CERTIFICADO_ESTADOS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={labelStyle}>Nombre del vecino</div>
+              <input value={form.vecinoNombre || ""} disabled={!canManageCertificados} onChange={(e) => set("vecinoNombre", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>DNI</div>
+              <input value={form.dni || ""} disabled={!canManageCertificados} onChange={(e) => set("dni", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Domicilio</div>
+              <input value={form.domicilio || ""} disabled={!canManageCertificados} onChange={(e) => set("domicilio", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Barrio</div>
+              <input value={form.barrio || ""} disabled={!canManageCertificados} onChange={(e) => set("barrio", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Padrón catastral</div>
+              <input value={form.padronCatastral || ""} disabled={!canManageCertificados} onChange={(e) => set("padronCatastral", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Matrícula catastral</div>
+              <input value={form.matriculaCatastral || ""} disabled={!canManageCertificados} onChange={(e) => set("matriculaCatastral", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Propietario legal</div>
+              <input value={form.propietarioLegal || ""} disabled={!canManageCertificados} onChange={(e) => set("propietarioLegal", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Teléfono/contacto</div>
+              <input value={form.telefono || ""} disabled={!canManageCertificados} onChange={(e) => set("telefono", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Fecha de visita</div>
+              <input type="date" value={form.fechaVisita || ""} disabled={!canManageCertificados} onChange={(e) => set("fechaVisita", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Motivo</div>
+              <input value={form.motivo || ""} disabled={!canManageCertificados} onChange={(e) => set("motivo", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Presentado ante</div>
+              <input value={form.presentadoAnte || ""} disabled={!canManageCertificados} onChange={(e) => set("presentadoAnte", e.target.value)} placeholder="Ej: Sra. concejal Medina, Claudia" style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>Agente</div>
+              <input value={form.agenteNombre || ""} disabled={!canManageCertificados} onChange={(e) => set("agenteNombre", e.target.value)} style={inputStyle} />
+            </div>
+          </div>
+
+          <div>
+            <div style={labelStyle}>Observaciones</div>
+            <textarea value={form.observaciones || ""} disabled={!canManageCertificados} onChange={(e) => set("observaciones", e.target.value)} rows={4} style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+
+          {mode === "edit" ? (
+            <div style={{ border: `1px solid ${C.border}`, borderRadius: 16, padding: 14, display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 800 }}>Documentación adjunta</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>Boleta de luz, fotocopia DNI u otros comprobantes.</div>
+                </div>
+                {canManageCertificados ? (
+                  <label {...buttonHoverHandlers} style={{ ...btnGhost, ...interactiveButtonStyle, display: "inline-flex", alignItems: "center", gap: 8, cursor: uploading ? "not-allowed" : "pointer" }}>
+                    {uploading ? "Subiendo..." : "Subir archivos"}
+                    <input
+                      type="file"
+                      accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
+                      multiple
+                      style={{ display: "none" }}
+                      disabled={uploading}
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length) {
+                          setActionNotice("Subiendo documentación...");
+                          await onUploadFiles(files);
+                          setActionNotice(files.length === 1 ? "Archivo cargado correctamente." : "Archivos cargados correctamente.");
+                        }
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                ) : null}
+              </div>
+
+              {archivos.length ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {archivos.map((file) => (
+                    <div key={file.id} style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 10, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{file.nombreOriginal}</div>
+                        <div style={{ color: C.dim, fontSize: 12 }}>
+                          {file.createdAt ? `Cargado: ${formatDateTime(file.createdAt)}` : "Cargado: sin fecha"} • Peso: {file.tamanoBytes ? formatFileSize(file.tamanoBytes) : "no registrado"}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <a href={file.publicUrl} target="_blank" rel="noreferrer" onClick={() => setActionNotice("Archivo abierto en una nueva pestaña.")} style={{ color: C.sky, fontWeight: 700, textDecoration: "none" }}>Abrir</a>
+                        {canManageCertificados ? (
+                          <button
+                            type="button"
+                            disabled={deletingFileId === String(file.id)}
+                            onClick={async () => {
+                              if (!confirm("¿Eliminar este archivo?")) return;
+                              const ok = await onDeleteFile(file);
+                              if (ok) setActionNotice("Archivo eliminado correctamente.");
+                            }}
+                            {...buttonHoverHandlers}
+                            style={{ ...btnGhost, ...interactiveButtonStyle, padding: "6px 10px", fontSize: 12, color: C.red, borderColor: "#fecaca", opacity: deletingFileId === String(file.id) ? 0.6 : 1 }}
+                          >
+                            {deletingFileId === String(file.id) ? "Eliminando..." : "Eliminar"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <div style={{ color: C.dim, fontSize: 13 }}>Sin documentación adjunta.</div>}
+            </div>
+          ) : (
+            <div style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 14, padding: 12, color: C.muted, fontSize: 13 }}>
+              Primero guarda la constancia. Después vas a poder subir la documentación adjunta.
+            </div>
+          )}
+
+          {actionNotice ? (
+            <div style={{ background: "#ecfdf5", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 12, padding: "10px 12px", fontSize: 13, fontWeight: 700 }}>
+              {actionNotice}
+            </div>
+          ) : null}
+
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {canManageCertificados ? <button onClick={submit} {...buttonHoverHandlers} style={{ ...btnPrimary, ...interactiveButtonStyle }}>Guardar constancia</button> : null}
+              <button onClick={printCertificado} {...buttonHoverHandlers} style={{ ...btnGhost, ...interactiveButtonStyle }}>Imprimir constancia</button>
+              {mode === "edit" && canManageCertificados ? (
+                <button
+                  onClick={async () => {
+                    if (!confirm("¿Eliminar esta constancia?")) return;
+                    const ok = await onDelete();
+                    if (ok) window.alert("Constancia eliminada correctamente.");
+                  }}
+                  {...buttonHoverHandlers}
+                  style={{ ...btnGhost, ...interactiveButtonStyle, color: C.red, borderColor: "#fecaca" }}
+                >
+                  Eliminar constancia
+                </button>
+              ) : null}
+            </div>
+            <button onClick={onClose} {...buttonHoverHandlers} style={{ ...btnGhost, ...interactiveButtonStyle }}>Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PasswordAdminModal({ open, mode = "change", selectedUserId, onClose, onSubmit, loading, error }) {
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNext, setShowNext] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [nextPassword, setNextPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [targetUserId, setTargetUserId] = useState(LOGIN_USERS.find((user) => user.id === selectedUserId && user.requiresPassword)?.id || "estela-palacios");
+  const [localError, setLocalError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setCurrentPassword("");
+      setNextPassword("");
+      setConfirmPassword("");
+      setLocalError("");
+      setTargetUserId(LOGIN_USERS.find((user) => user.id === selectedUserId && user.requiresPassword)?.id || "estela-palacios");
+      setShowCurrent(false);
+      setShowNext(false);
+      setShowConfirm(false);
+    }
+  }, [open, selectedUserId, mode]);
+
+  if (!open) return null;
+
+  const title = mode === "change" ? "Cambiar contraseña" : "Reset manual admin";
+  const helper = mode === "change"
+    ? "Ingresá la contraseña actual y definí la nueva."
+    : "Usá esta opción para resetear la clave manualmente para Estela, Carlos, Emmanuel o Andrés.";
+
+  const submit = () => {
+    setLocalError("");
+    if (!nextPassword || nextPassword.length < 4) {
+      setLocalError("La nueva contraseña debe tener al menos 4 caracteres.");
+      return;
+    }
+    if (nextPassword !== confirmPassword) {
+      setLocalError("La confirmación no coincide.");
+      return;
+    }
+    if (mode === "change" && !currentPassword) {
+      setLocalError("Ingresá la contraseña actual.");
+      return;
+    }
+    onSubmit({ targetUserId, currentPassword, nextPassword });
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.35)", backdropFilter: "blur(4px)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 520, margin: "0 16px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.15)" }}>
+        <div style={{ background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", padding: "18px 20px", color: "#fff" }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>{title}</div>
+          <div style={{ fontSize: 12, color: "#bae6fd", marginTop: 4 }}>{helper}</div>
+        </div>
+        <div style={{ padding: 20, display: "grid", gap: 12 }}>
+          {mode === "reset" ? (
+            <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)} style={inputStyle}>
+              {LOGIN_USERS.filter((user) => user.requiresPassword).map((user) => (
+                <option key={user.id} value={user.id}>{user.nombre}</option>
+              ))}
+            </select>
+          ) : (
+            <div style={{ ...inputStyle, background: "#f8fafc", display: "flex", alignItems: "center", minHeight: 42 }}>
+              {LOGIN_USERS.find((u) => u.id === selectedUserId)?.nombre || "Usuario"}
+            </div>
+          )}
+
+          {mode === "change" ? (
+            <div style={{ position: "relative" }}>
+              <input type={showCurrent ? "text" : "password"} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Contraseña actual" style={{ ...inputStyle, paddingRight: 44, background: "#fff" }} />
+              <button type="button" onClick={() => setShowCurrent((v) => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: C.muted, fontSize: 18, padding: 0 }}>{showCurrent ? "🙈" : "👁"}</button>
+            </div>
+          ) : null}
+
+          <div style={{ position: "relative" }}>
+            <input type={showNext ? "text" : "password"} value={nextPassword} onChange={(e) => setNextPassword(e.target.value)} placeholder="Nueva contraseña" style={{ ...inputStyle, paddingRight: 44, background: "#fff" }} />
+            <button type="button" onClick={() => setShowNext((v) => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: C.muted, fontSize: 18, padding: 0 }}>{showNext ? "🙈" : "👁"}</button>
+          </div>
+
+          <div style={{ position: "relative" }}>
+            <input type={showConfirm ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirmar nueva contraseña" style={{ ...inputStyle, paddingRight: 44, background: "#fff" }} />
+            <button type="button" onClick={() => setShowConfirm((v) => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: C.muted, fontSize: 18, padding: 0 }}>{showConfirm ? "🙈" : "👁"}</button>
+          </div>
+
+          {localError ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 10px", fontSize: 13 }}>{localError}</div> : null}
+          {error ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 10px", fontSize: 13 }}>{error}</div> : null}
+        </div>
+        <div style={{ padding: "0 20px 20px", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button onClick={onClose} style={btnGhost} disabled={loading}>Cancelar</button>
+          <button onClick={submit} style={btnPrimary} disabled={loading}>{loading ? "Guardando..." : "Guardar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingField, onUploadPlano, onDeletePlano, uploadingPlano, deletingPlanoId, canEdit, onDelete, planos = [], onNext, modalIndex = 0, modalTotal = 0, activeUser, observacionesIntendente = [], onAddObservacionIntendente, addingObservacionIntendente, existingExpedientes = [], onDuplicatePadron }) {
   const [draft, setDraft] = useState(item || null);
-  const [previewFileId, setPreviewFileId] = useState("");
+  const [observacionIntendenteDraft, setObservacionIntendenteDraft] = useState("");
 
   useEffect(() => {
     setDraft(item || null);
-    setPreviewFileId("");
+    setObservacionIntendenteDraft("");
   }, [item]);
 
   if (!draft) return null;
@@ -1024,11 +2259,18 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
   const saving = savingField === String(draft.id);
   const barrios = BARRIOS[zona.localidad || "Banda del Río Salí"] || ALL_BARRIOS;
   const modalFiles = planos.length ? planos : (draft.planoUrl ? [{ id: `legacy-${draft.id}`, nombreOriginal: draft.planoPath || "Archivo cargado", publicUrl: draft.planoUrl, tamanoBytes: 0, createdAt: draft.upd, tipoMime: "" }] : []);
-  const previewTarget = modalFiles.find((file) => String(file.id) === String(previewFileId)) || modalFiles[0] || null;
   const completeness = getExpedienteCompleteness(draft, modalFiles);
   const warnings = getExpedienteWarnings(draft, modalFiles);
 
   const updateField = (field, value) => {
+    if (field === "padronNumero") {
+      const duplicatedPadron = findDuplicatePadron(existingExpedientes, value, draft.id);
+      if (duplicatedPadron) {
+        onDuplicatePadron?.(value, duplicatedPadron);
+        return;
+      }
+    }
+
     const next = { ...draft, [field]: value };
     setDraft(next);
     if (canEdit) onSaveField(draft.id, { [field]: value });
@@ -1058,7 +2300,7 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "#fff",
-          borderRadius: 18,
+          borderRadius: 14,
           width: "100%",
           maxWidth: 1080,
           margin: "0 16px",
@@ -1114,6 +2356,41 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
               <div style={labelStyle}>Notas internas</div>
               <textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
             </div>
+            <div style={{ gridColumn: "1 / -1", background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: C.slate, fontWeight: 800 }}>Observaciones del Intendente</div>
+                  <div style={{ marginTop: 3, fontSize: 11, color: C.dim }}>Historial ejecutivo separado de las notas internas.</div>
+                </div>
+                {activeUser?.canAddExecutiveNotes ? <span style={{ fontSize: 11, color: C.indigo, fontWeight: 700 }}>Puede agregar observaciones</span> : null}
+              </div>
+
+              {activeUser?.canAddExecutiveNotes ? (
+                <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+                  <textarea value={observacionIntendenteDraft} onChange={(e) => setObservacionIntendenteDraft(e.target.value)} rows={3} placeholder="Escribir observación ejecutiva..." style={{ ...inputStyle, resize: "vertical", background: "#fff" }} />
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button type="button" onClick={async () => { if (!cleanText(observacionIntendenteDraft) || !onAddObservacionIntendente) return; const ok = await onAddObservacionIntendente(draft.id, observacionIntendenteDraft); if (ok) setObservacionIntendenteDraft(""); }} disabled={addingObservacionIntendente || !cleanText(observacionIntendenteDraft)} style={{ ...btnPrimary, opacity: addingObservacionIntendente || !cleanText(observacionIntendenteDraft) ? 0.7 : 1 }}>
+                      {addingObservacionIntendente ? "Guardando..." : "Guardar observación"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {observacionesIntendente.length === 0 ? (
+                  <div style={{ color: C.dim, fontSize: 12 }}>Todavía no hay observaciones del Intendente.</div>
+                ) : observacionesIntendente.map((obs) => (
+                  <div key={obs.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 800, color: C.slate, fontSize: 13 }}>{obs.autorNombre} · {obs.autorRol}</div>
+                      <div style={{ color: C.dim, fontSize: 11 }}>{formatDateTime(obs.createdAt)}</div>
+                    </div>
+                    <div style={{ marginTop: 7, color: C.text, fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{obs.observacion}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div style={{ gridColumn: "1 / -1" }}>
               <div style={labelStyle}>Archivos adjuntos</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12 }}>
@@ -1138,59 +2415,36 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
               </div>
 
               {modalFiles.length ? (
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {modalFiles.map((plano) => {
-                      const activePreview = String(previewTarget?.id || "") === String(plano.id);
-                      return (
-                        <div key={plano.id} style={{ background: activePreview ? "#eff6ff" : "#f8fafc", border: `1px solid ${activePreview ? "#93c5fd" : C.border}`, borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                          <div>
-                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                              <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>{plano.nombreOriginal || "Archivo"}</div>
-                              <span style={{ fontSize: 10, color: C.dim, border: `1px solid ${C.border}`, borderRadius: 999, padding: "1px 6px" }}>{getAttachmentLabel(plano.nombreOriginal, plano.tipoMime)}</span>
-                            </div>
-                            <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
-                              {plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "Archivo adjunto"}
-                              {plano.createdAt ? ` • ${formatDateTime(plano.createdAt)}` : ""}
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                            <button type="button" onClick={() => setPreviewFileId(String(plano.id))} style={{ ...btnGhost, padding: "7px 10px", fontSize: 12, color: C.sky }}>Ver</button>
-                            <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
-                            <a href={plano.publicUrl} download style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Descargar</a>
-                            {canEdit ? (
-                              <button
-                                type="button"
-                                onClick={() => onDeletePlano(draft.id, plano)}
-                                disabled={deletingPlanoId === String(plano.id || draft.id)}
-                                style={{ border: "none", background: "transparent", color: C.red, fontWeight: 700, cursor: deletingPlanoId === String(plano.id || draft.id) ? "not-allowed" : "pointer", opacity: deletingPlanoId === String(plano.id || draft.id) ? 0.6 : 1, padding: 0 }}
-                              >
-                                {deletingPlanoId === String(plano.id || draft.id) ? "Eliminando..." : "Eliminar"}
-                              </button>
-                            ) : null}
-                          </div>
+                <div style={{ display: "grid", gap: 10 }}>
+                  {modalFiles.map((plano) => (
+                    <div key={plano.id} style={{ background: "#f8fafc", border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 10px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>{plano.nombreOriginal || "Archivo"}</div>
+                          <span style={{ fontSize: 10, color: C.dim, border: `1px solid ${C.border}`, borderRadius: 999, padding: "1px 6px" }}>{getAttachmentLabel(plano.nombreOriginal, plano.tipoMime)}</span>
                         </div>
-                      );
-                    })}
-                  </div>
-
-                  {previewTarget ? (
-                    <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, background: "#fff", overflow: "hidden" }}>
-                      <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: C.slate }}>Vista previa: {previewTarget.nombreOriginal}</div>
-                        <a href={previewTarget.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir en pestaña</a>
+                        <div style={{ marginTop: 4, fontSize: 12, color: C.dim }}>
+                          {plano.createdAt ? `Cargado: ${formatDateTime(plano.createdAt)}` : "Cargado: sin fecha"}
+                          {" • "}
+                          {`Peso: ${plano.tamanoBytes ? formatFileSize(plano.tamanoBytes) : "no registrado"}`}
+                        </div>
                       </div>
-                      {getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "image" ? (
-                        <div style={{ padding: 12, background: "#f8fafc", display: "flex", justifyContent: "center" }}>
-                          <img src={previewTarget.publicUrl} alt={previewTarget.nombreOriginal} style={{ maxWidth: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 10 }} />
-                        </div>
-                      ) : getPreviewType(previewTarget.nombreOriginal, previewTarget.tipoMime) === "pdf" ? (
-                        <iframe title={previewTarget.nombreOriginal} src={previewTarget.publicUrl} style={{ width: "100%", height: 420, border: "none", background: "#fff" }} />
-                      ) : (
-                        <div style={{ padding: 20, fontSize: 13, color: C.muted }}>Este tipo de archivo no tiene vista previa dentro del panel. Usá “Descargar” o “Abrir en pestaña”.</div>
-                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <a href={plano.publicUrl} target="_blank" rel="noreferrer" style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Abrir</a>
+                        <a href={plano.publicUrl} download style={{ color: C.sky, fontWeight: 700, textDecoration: "none", fontSize: 12 }}>Descargar</a>
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => onDeletePlano(draft.id, plano)}
+                            disabled={deletingPlanoId === String(plano.id || draft.id)}
+                            style={{ border: "none", background: "transparent", color: C.red, fontWeight: 700, cursor: deletingPlanoId === String(plano.id || draft.id) ? "not-allowed" : "pointer", opacity: deletingPlanoId === String(plano.id || draft.id) ? 0.6 : 1, padding: 0 }}
+                          >
+                            {deletingPlanoId === String(plano.id || draft.id) ? "Eliminando..." : "Eliminar"}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                  ) : null}
+                  ))}
                 </div>
               ) : (
                 <span style={{ color: C.dim, fontSize: 12 }}>Sin archivos adjuntos</span>
@@ -1201,17 +2455,18 @@ function ModalExpediente({ item, users, usersMap, onClose, onSaveField, savingFi
 
         <div style={{ padding: "0 24px 20px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {canEdit ? <button onClick={() => onDelete(draft)} style={{ ...btnGhost, color: C.red, borderColor: "#fecaca" }}>Eliminar expediente</button> : null}
+            {canEdit ? <button onClick={() => onDelete(draft)} {...buttonHoverHandlers}
+                  style={{ ...btnGhost, ...interactiveButtonStyle, color: C.red, borderColor: "#fecaca" }}>Eliminar expediente</button> : null}
             {onNext ? <button onClick={onNext} style={btnGhost}>Siguiente expediente</button> : null}
           </div>
-          <button onClick={onClose} style={btnGhost}>Cerrar</button>
+          <button onClick={onClose} {...buttonHoverHandlers} style={{ ...btnGhost, ...interactiveButtonStyle }}>Cerrar</button>
         </div>
       </div>
     </div>
   );
 }
 
-function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
+function NuevoExpedienteModal({ open, onClose, onSave, saving, users, existingExpedientes = [] }) {
   const [form, setForm] = useState({
     titular: "",
     dni: "",
@@ -1254,7 +2509,16 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
   const barrioFinal = form.barrioSeleccionado === "Otro" ? form.barrioManual.trim() : form.barrioSeleccionado;
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
+  const duplicatedPadron = findDuplicatePadron(existingExpedientes, form.padronNumero);
+
   const guardar = () => {
+    const currentDuplicatedPadron = findDuplicatePadron(existingExpedientes, form.padronNumero);
+
+    if (currentDuplicatedPadron) {
+      setValidationError(`El padrón ${cleanText(form.padronNumero)} ya existe en ${currentDuplicatedPadron.num || "otro expediente"} (${currentDuplicatedPadron.titular || "sin titular"}). No se puede cargar duplicado.`);
+      return;
+    }
+
     if (!form.titular.trim() || !form.area) {
       setValidationError("Completá titular y área.");
       return;
@@ -1281,18 +2545,19 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.35)", backdropFilter: "blur(4px)" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 560, margin: "0 16px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.15)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 560, margin: "0 16px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.15)" }}>
         <div style={{ background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", padding: "20px 22px", color: "#fff" }}>
           <div style={{ fontSize: 18, fontWeight: 700 }}>Nuevo expediente</div>
           <div style={{ fontSize: 12, color: "#bae6fd", marginTop: 4 }}>Carga inicial del expediente</div>
         </div>
         <div style={{ padding: 20, display: "grid", gap: 12 }}>
           {validationError ? <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 8px", fontSize: 12 }}>{validationError}</div> : null}
+          {duplicatedPadron ? <div style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", borderRadius: 10, padding: "8px 8px", fontSize: 12, fontWeight: 700 }}>Padrón ya existente: {duplicatedPadron.num || "expediente sin número"} · {duplicatedPadron.titular || "sin titular"}</div> : null}
           <input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nombre del titular" style={inputStyle} />
           <input value={form.dni} onChange={(e) => set("dni", e.target.value)} placeholder="DNI" style={inputStyle} />
           <input value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="Contacto / teléfono" style={inputStyle} />
           <select value={form.estadoCivil} onChange={(e) => set("estadoCivil", e.target.value)} style={inputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Estado civil"}</option>)}</select>
-          <input value={form.padronNumero} onChange={(e) => set("padronNumero", e.target.value)} placeholder="N° de padrón" style={inputStyle} />
+          <input value={form.padronNumero} onChange={(e) => { set("padronNumero", e.target.value); setValidationError(""); }} placeholder="N° de padrón" style={{ ...inputStyle, borderColor: duplicatedPadron ? "#fb923c" : C.border, background: duplicatedPadron ? "#fff7ed" : inputStyle.background }} />
           <select value={form.localidad} onChange={(e) => { set("localidad", e.target.value); set("barrioSeleccionado", ""); set("barrioManual", ""); }} style={inputStyle}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
           <select value={form.barrioSeleccionado} onChange={(e) => set("barrioSeleccionado", e.target.value)} style={inputStyle}>
             <option value="">Barrio</option>
@@ -1306,14 +2571,14 @@ function NuevoExpedienteModal({ open, onClose, onSave, saving, users }) {
         </div>
         <div style={{ padding: "0 20px 20px", display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <button onClick={onClose} style={btnGhost} disabled={saving}>Cancelar</button>
-          <button onClick={guardar} style={btnPrimary} disabled={saving}>{saving ? "Guardando..." : "Guardar"}</button>
+          <button onClick={guardar} style={{ ...btnPrimary, opacity: duplicatedPadron ? 0.55 : 1, cursor: duplicatedPadron ? "not-allowed" : "pointer" }} disabled={saving || !!duplicatedPadron}>{saving ? "Guardando..." : "Guardar"}</button>
         </div>
       </div>
     </div>
   );
 }
 
-function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlano, onDeletePlano, deletingPlanoId, uploadingPlano, savingField, canEdit, onDelete, planos = [], selected, onToggleSelect }) {
+function ExpedienteRow({ exp, rowIndex = 0, users, usersMap, onSaveField, onOpen, onUploadPlano, onDeletePlano, deletingPlanoId, uploadingPlano, savingField, canEdit, onDelete, planos = [], selected, onToggleSelect, existingExpedientes = [], onDuplicatePadron }) {
   const [draft, setDraft] = useState(exp);
 
   useEffect(() => {
@@ -1324,8 +2589,18 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
   const saving = savingField === String(draft.id);
   const barrios = BARRIOS[zona.localidad || "Banda del Río Salí"] || ALL_BARRIOS;
   const latestPlano = planos[0] || null;
+  const rowBg = rowIndex % 2 === 0 ? "#ffffff" : "#edf2f7";
+  const rowFieldBg = rowIndex % 2 === 0 ? "#ffffff" : "#e2e8f0";
 
   const updateField = (field, value) => {
+    if (field === "padronNumero") {
+      const duplicatedPadron = findDuplicatePadron(existingExpedientes, value, draft.id);
+      if (duplicatedPadron) {
+        onDuplicatePadron?.(value, duplicatedPadron);
+        return;
+      }
+    }
+
     const next = { ...draft, [field]: value };
     setDraft(next);
     if (canEdit) onSaveField(draft.id, { [field]: value });
@@ -1338,28 +2613,28 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
   };
 
   return (
-    <tr style={{ borderBottom: "1px solid #f1f5f9", verticalAlign: "top" }}>
-      <td style={{ padding: "8px 6px", width: 32 }}>
+    <tr style={{ borderBottom: "1px solid #f1f5f9", verticalAlign: "top", background: rowIndex % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
+      <td style={{ background: rowBg, padding: "8px 6px", width: 32 }}>
         <input type="checkbox" checked={selected} onChange={() => onToggleSelect(exp.id)} />
       </td>
-      <td style={{ padding: "8px 6px", width: 118 }}>
+      <td style={{ background: rowBg, padding: "8px 6px", width: 118 }}>
         <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800 }}>{draft.num}</span>
         <div style={{ color: C.dim, fontSize: 11, marginTop: 6 }}>{draft.origenCarga}</div>
         <div style={{ marginTop: 8 }}><CompletenessBadge expediente={draft} attachments={planos} /></div>
       </td>
-      <td style={{ padding: "6px 5px", width: 220 }}><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "6px 5px", width: 100 }}><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "6px 5px", width: 118 }}><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "6px 5px", width: 120 }}><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={compactInputStyle}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></td>
-      <td style={{ padding: "6px 5px", width: 190 }}>
-        <select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={{ ...compactInputStyle, marginBottom: 8 }}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
-        <select value={zona.barrio || ""} disabled={!canEdit} onChange={(e) => updateZona("barrio", e.target.value)} style={compactInputStyle}>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 220 }}><input value={draft.titular} disabled={!canEdit} onChange={(e) => updateField("titular", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 100 }}><input value={draft.dni} disabled={!canEdit} onChange={(e) => updateField("dni", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 118 }}><input value={draft.telefono || ""} disabled={!canEdit} onChange={(e) => updateField("telefono", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 120 }}><select value={draft.estadoCivil} disabled={!canEdit} onChange={(e) => updateField("estadoCivil", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x}>{x || "Seleccionar"}</option>)}</select></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 190 }}>
+        <select value={zona.localidad || "Banda del Río Salí"} disabled={!canEdit} onChange={(e) => updateZona("localidad", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg, marginBottom: 8 }}>{LOCALIDADES.map((loc) => <option key={loc} value={loc}>{loc}</option>)}</select>
+        <select value={zona.barrio || ""} disabled={!canEdit} onChange={(e) => updateZona("barrio", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }}>
           <option value="">Barrio</option>
           {barrios.map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
       </td>
-      <td style={{ padding: "6px 5px", width: 98 }}><input value={draft.padronNumero} disabled={!canEdit} onChange={(e) => updateField("padronNumero", e.target.value)} style={compactInputStyle} /></td>
-      <td style={{ padding: "6px 5px", width: 145 }}>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 98 }}><input value={draft.padronNumero} disabled={!canEdit} onChange={(e) => updateField("padronNumero", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 145 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {canEdit ? (
             <label style={{ ...btnGhost, textAlign: "center", padding: "8px 10px", fontSize: 11, color: uploadingPlano ? C.dim : C.text, cursor: uploadingPlano ? "not-allowed" : "pointer" }}>
@@ -1406,11 +2681,11 @@ function ExpedienteRow({ exp, users, usersMap, onSaveField, onOpen, onUploadPlan
           ) : <span style={{ fontSize: 11, color: C.dim }}>Sin archivo</span>}
         </div>
       </td>
-      <td style={{ padding: "6px 5px", width: 112 }}><select value={draft.estado} disabled={!canEdit} onChange={(e) => updateField("estado", e.target.value)} style={getEstadoSelectStyle(draft.estado)}>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></td>
-      <td style={{ padding: "6px 5px", width: 110 }}><select value={draft.area} disabled={!canEdit} onChange={(e) => updateField("area", e.target.value)} style={compactInputStyle}>{AREAS.filter(Boolean).map((a) => <option key={a} value={a}>{a}</option>)}</select></td>
-      <td style={{ padding: "6px 5px", width: 126 }}><select value={draft.resp} disabled={!canEdit} onChange={(e) => updateField("resp", e.target.value)} style={compactInputStyle}>{UBICACIONES.map((u) => <option key={u} value={u}>{u || "Ubicación"}</option>)}</select></td>
-      <td style={{ padding: "6px 5px", width: 210 }}><textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={2} style={{ ...compactInputStyle, resize: "vertical", minHeight: 44 }} /></td>
-      <td style={{ padding: "6px 5px", width: 98 }}>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 112 }}><select value={draft.estado} disabled={!canEdit} onChange={(e) => updateField("estado", e.target.value)} style={{ ...getEstadoSelectStyle(draft.estado), boxShadow: rowIndex % 2 === 0 ? "none" : "inset 0 0 0 9999px rgba(255,255,255,0.10)" }}>{Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 110 }}><select value={draft.area} disabled={!canEdit} onChange={(e) => updateField("area", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }}>{AREAS.filter(Boolean).map((a) => <option key={a} value={a}>{a}</option>)}</select></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 126 }}><select value={draft.resp} disabled={!canEdit} onChange={(e) => updateField("resp", e.target.value)} style={{ ...compactInputStyle, background: rowFieldBg }}>{UBICACIONES.map((u) => <option key={u} value={u}>{u || "Ubicación"}</option>)}</select></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 210 }}><textarea value={draft.notas} disabled={!canEdit} onChange={(e) => updateField("notas", e.target.value)} rows={2} style={{ ...compactInputStyle, background: rowFieldBg, resize: "vertical", minHeight: 44 }} /></td>
+      <td style={{ background: rowBg, padding: "6px 5px", width: 98 }}>
         <div style={{ display: "grid", gap: 8 }}>
           <button onClick={() => onOpen(draft)} style={{ ...btnPrimary, padding: "6px 10px", fontSize: 11 }}>Ver</button>
           {canEdit ? <button onClick={() => onDelete(draft)} style={{ ...btnGhost, padding: "6px 10px", fontSize: 11, color: C.red, borderColor: "#fecaca" }}>Eliminar</button> : null}
@@ -1425,6 +2700,11 @@ export default function App() {
   const [data, setData] = useState([]);
   const [users, setUsers] = useState([]);
   const [planosByExpediente, setPlanosByExpediente] = useState({});
+  const [certificados, setCertificados] = useState([]);
+  const [archivosByCertificado, setArchivosByCertificado] = useState({});
+  const [uploadingCertificadoId, setUploadingCertificadoId] = useState("");
+  const [deletingCertificadoFileId, setDeletingCertificadoFileId] = useState("");
+  const [observacionesByExpediente, setObservacionesByExpediente] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeNav, setActiveNav] = useState("Dashboard");
   const [search, setSearch] = useState("");
@@ -1448,12 +2728,19 @@ export default function App() {
   const [activeUser, setActiveUser] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordModalMode, setPasswordModalMode] = useState("change");
+  const [passwordModalLoading, setPasswordModalLoading] = useState(false);
+  const [passwordModalError, setPasswordModalError] = useState("");
   const [accessSyncStatus, setAccessSyncStatus] = useState({ kind: "", text: "" });
   const [accessHistory, setAccessHistory] = useState([]);
 
   const [savingField, setSavingField] = useState("");
   const [uploadingPlanoId, setUploadingPlanoId] = useState("");
   const [deletingPlanoId, setDeletingPlanoId] = useState("");
+  const [addingObservacionIntendente, setAddingObservacionIntendente] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState(typeof window !== "undefined" ? window.innerHeight : 900);
   const saveTimersRef = useRef({});
 
   const [importFiles, setImportFiles] = useState([]);
@@ -1467,6 +2754,7 @@ export default function App() {
   const fechaActual = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
   const usersMap = useMemo(() => buildUsersMap(users), [users]);
   const canEdit = Boolean(activeUser?.canEdit);
+  const canManageCertificados = Boolean(activeUser?.id === "emmanuel-aguilar" || activeUser?.canEdit);
   const barrioFilterOptions = useMemo(() => buildBarrioFilterOptions(), []);
 
   const stats = useMemo(() => ({
@@ -1492,6 +2780,13 @@ export default function App() {
 
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => clearTimeout(timer));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => setViewportHeight(window.innerHeight || 900);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   async function applyExpedientePlanoUpdate(expedienteId, filePath, publicUrl) {
@@ -1565,6 +2860,33 @@ export default function App() {
     const planosResult = await fetchPlanosIndex(expedienteIds);
     if (!planosResult.error) {
       setPlanosByExpediente(planosResult.data || {});
+    } else {
+      setPlanosByExpediente({});
+    }
+
+    const certificadosResult = await fetchCertificados();
+    if (certificadosResult.error) {
+      setCertificados([]);
+      setArchivosByCertificado({});
+      setError(`No se pudieron cargar las constancias: ${certificadosResult.error.message}`);
+    } else {
+      const certificadosData = certificadosResult.data || [];
+      setCertificados(certificadosData);
+
+      const certificadosIds = certificadosData.map((cert) => cert.id).filter(Boolean);
+      const certArchivosResult = await fetchCertificadoArchivosIndex(certificadosIds);
+
+      if (certArchivosResult.error) {
+        setArchivosByCertificado({});
+        setNotice(`Las constancias se cargaron, pero no se pudieron cargar sus archivos: ${certArchivosResult.error.message}`);
+      } else {
+        setArchivosByCertificado(certArchivosResult.data || {});
+      }
+    }
+
+    const observacionesResult = await fetchObservacionesIntendenteIndex(expedienteIds);
+    if (!observacionesResult.error) {
+      setObservacionesByExpediente(observacionesResult.data || {});
     }
 
     const mergedRows = dedupeResult.uniqueRows.map((row) => {
@@ -1602,33 +2924,433 @@ export default function App() {
       return;
     }
 
+    const selectedNeedsPassword = Boolean(selectedUser?.requiresPassword);
+
+    if (selectedNeedsPassword && !cleanText(loginPassword)) {
+      setLoginError("Ingresá la contraseña para continuar.");
+      return;
+    }
+
     setLoginLoading(true);
     setLoginError("");
     setAccessSyncStatus({ kind: "", text: "" });
 
-    const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
-    let syncStatus = { kind: "success", text: "Ingreso registrado correctamente en el sistema central." };
-
-    const insertResult = await supabase.from("panel_accesos").insert(entry);
-    if (insertResult.error) {
-      syncStatus = { kind: "warning", text: "Ingreso registrado localmente. Pendiente sincronización central." };
-    }
-
-    const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
-    let nextHistory = [];
     try {
-      const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
-      const current = raw ? JSON.parse(raw) : [];
-      nextHistory = [localEntry, ...current].slice(0, 10);
-      localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
-    } catch {
-      nextHistory = [localEntry];
+      const usuarioClave = getLoginClaveById(selectedUser.id);
+
+      if (selectedNeedsPassword) {
+        const incomingHash = await hashPassword(loginPassword);
+        const { data: panelUser, error: panelUserError } = await supabase
+          .from("panel_usuarios")
+          .select("id, nombre, usuario_clave, password_hash, password_set_at, rol, area")
+          .eq("usuario_clave", usuarioClave)
+          .maybeSingle();
+
+        if (panelUserError) {
+          throw new Error(panelUserError.message || "No se pudo validar el usuario.");
+        }
+
+        const cachedHashes = readPasswordHashCache();
+        const cachedHash = cachedHashes[usuarioClave] || "";
+
+        if (!panelUser) {
+          const { data: createdPanelUser, error: createPanelUserError } = await supabase
+            .from("panel_usuarios")
+            .insert({
+              nombre: selectedUser.nombre,
+              usuario_clave: usuarioClave,
+              password_hash: incomingHash,
+              password_set_at: new Date().toISOString(),
+              rol: selectedUser.rol,
+              area: selectedUser.area,
+              updated_at: new Date().toISOString(),
+            })
+            .select("id")
+            .single();
+
+          if (createPanelUserError || !createdPanelUser) {
+            throw new Error(createPanelUserError?.message || "No se pudo crear el usuario en panel_usuarios.");
+          }
+
+          writePasswordHashCache(usuarioClave, incomingHash);
+        } else {
+          const currentHash = panelUser.password_hash || cachedHash;
+
+          if (!currentHash) {
+            const { error: bootstrapPasswordError } = await supabase
+              .from("panel_usuarios")
+              .update({
+                password_hash: incomingHash,
+                password_set_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", panelUser.id);
+
+            if (bootstrapPasswordError) {
+              throw new Error(bootstrapPasswordError.message || "No se pudo registrar la contraseña inicial.");
+            }
+            writePasswordHashCache(usuarioClave, incomingHash);
+          } else if (currentHash !== incomingHash) {
+            throw new Error("Contraseña incorrecta.");
+          } else if (!panelUser.password_hash && cachedHash === incomingHash) {
+            const { error: syncPasswordError } = await supabase
+              .from("panel_usuarios")
+              .update({
+                password_hash: incomingHash,
+                password_set_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", panelUser.id);
+
+            if (!syncPasswordError) writePasswordHashCache(usuarioClave, incomingHash);
+          }
+        }
+      }
+
+      const entry = { nombre: selectedUser.nombre, rol: selectedUser.rol, fecha_ingreso: new Date().toISOString() };
+      const insertResult = await supabase.from("panel_accesos").insert(entry);
+      const syncStatus = insertResult.error
+        ? { kind: "warning", text: "Ingreso registrado localmente." }
+        : { kind: "success", text: "Ingreso registrado correctamente." };
+
+      const localEntry = { ...entry, tecnico: selectedUser.tecnico, area: selectedUser.area };
+      let nextHistory = [];
+      try {
+        const raw = localStorage.getItem(ACCESS_HISTORY_KEY);
+        const current = raw ? JSON.parse(raw) : [];
+        nextHistory = [localEntry, ...current].slice(0, 10);
+        localStorage.setItem(ACCESS_HISTORY_KEY, JSON.stringify(nextHistory));
+      } catch {
+        nextHistory = [localEntry];
+      }
+
+      setAccessHistory(nextHistory);
+      setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
+      setAccessSyncStatus(syncStatus);
+      setLoginPassword("");
+    } catch (err) {
+      setLoginError(err.message || "No se pudo iniciar sesión.");
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  async function handlePasswordAction({ targetUserId, currentPassword, nextPassword }) {
+    if (!supabase) {
+      setPasswordModalError("Faltan las variables de entorno de Supabase.");
+      return;
     }
 
-    setAccessHistory(nextHistory);
-    setActiveUser({ ...selectedUser, lastLoginAt: entry.fecha_ingreso });
-    setAccessSyncStatus(syncStatus);
-    setLoginLoading(false);
+    setPasswordModalLoading(true);
+    setPasswordModalError("");
+
+    try {
+      const usuarioClave = getLoginClaveById(targetUserId);
+      const targetUser = LOGIN_USERS.find((u) => u.id === targetUserId);
+
+      if (!usuarioClave || !targetUser || !targetUser.requiresPassword) {
+        throw new Error("Solo los usuarios con contraseña pueden usar esta función.");
+      }
+
+      const { data: panelUser, error: panelUserError } = await supabase
+        .from("panel_usuarios")
+        .select("id, password_hash")
+        .eq("usuario_clave", usuarioClave)
+        .maybeSingle();
+
+      if (panelUserError) throw new Error(panelUserError.message || "No se pudo validar el usuario.");
+      if (!panelUser) throw new Error("El usuario no existe en la tabla panel_usuarios.");
+
+      if (passwordModalMode === "change") {
+        const currentHash = await hashPassword(currentPassword);
+        if (panelUser.password_hash && panelUser.password_hash !== currentHash) {
+          throw new Error("La contraseña actual es incorrecta.");
+        }
+      }
+
+      const nextHash = await hashPassword(nextPassword);
+      const { error: updateError } = await supabase
+        .from("panel_usuarios")
+        .update({
+          password_hash: nextHash,
+          password_set_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", panelUser.id);
+
+      if (updateError) throw new Error(updateError.message || "No se pudo guardar la contraseña.");
+
+      setPasswordModalOpen(false);
+      setNotice(passwordModalMode === "change" ? "Contraseña actualizada correctamente." : `Contraseña reseteada para ${targetUser.nombre}.`);
+    } catch (err) {
+      setPasswordModalError(err.message || "No se pudo actualizar la contraseña.");
+    } finally {
+      setPasswordModalLoading(false);
+    }
+  }
+
+  async function addObservacionIntendente(expedienteId, observacion) {
+    if (!supabase || !activeUser?.canAddExecutiveNotes || !expedienteId || !cleanText(observacion)) return false;
+    setAddingObservacionIntendente(true);
+    setError("");
+    setNotice("");
+
+    const payload = {
+      expediente_id: expedienteId,
+      autor_nombre: activeUser.nombre,
+      autor_rol: activeUser.rol,
+      observacion: cleanText(observacion),
+    };
+
+    const { data: inserted, error: insertError } = await supabase
+      .from("observaciones_intendente")
+      .insert(payload)
+      .select("id, expediente_id, autor_nombre, autor_rol, observacion, created_at")
+      .single();
+
+    setAddingObservacionIntendente(false);
+
+    if (insertError) {
+      setError(`No se pudo guardar la observación del Intendente: ${insertError.message}`);
+      return false;
+    }
+
+    const normalized = normalizeObservacionIntendente(inserted);
+    setObservacionesByExpediente((prev) => ({
+      ...prev,
+      [expedienteId]: [normalized, ...(prev[expedienteId] || [])],
+    }));
+    setNotice("Observación del Intendente guardada correctamente.");
+    return true;
+  }
+
+
+  async function createCertificado(payload) {
+    if (!supabase || !canManageCertificados) return false;
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    const insertPayload = {
+      numero: cleanText(payload.numero) || nextCertificadoNumber(certificados),
+      vecino_nombre: normalizeTitular(payload.vecinoNombre),
+      dni: cleanText(payload.dni),
+      domicilio: cleanText(payload.domicilio),
+      barrio: cleanText(payload.barrio),
+      padron_catastral: cleanText(payload.padronCatastral),
+      matricula_catastral: cleanText(payload.matriculaCatastral),
+      propietario_legal: cleanText(payload.propietarioLegal),
+      telefono: normalizePhone(payload.telefono),
+      motivo: cleanText(payload.motivo) || "Constancia de tenencia precaria",
+      presentado_ante: cleanText(payload.presentadoAnte),
+      estado: cleanText(payload.estado) || "pendiente",
+      fecha_visita: payload.fechaVisita || null,
+      observaciones: cleanText(payload.observaciones),
+      agente_nombre: cleanText(payload.agenteNombre) || activeUser?.nombre || "Emmanuel Aguilar",
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: inserted, error: insertError } = await supabase
+      .from(CERTIFICADOS_TABLE)
+      .insert(insertPayload)
+      .select("*")
+      .single();
+
+    setSaving(false);
+
+    if (insertError) {
+      setError(`No se pudo guardar la constancia: ${insertError.message}`);
+      return false;
+    }
+
+    const normalized = normalizeCertificadoRecord(inserted);
+    const reloadResult = await fetchCertificados();
+    if (!reloadResult.error) {
+      setCertificados(reloadResult.data || [normalized]);
+    } else {
+      setCertificados((prev) => [normalized, ...prev]);
+    }
+    setNotice("Constancia guardada correctamente.");
+    return true;
+  }
+
+  async function saveCertificado(certificadoId, payload) {
+    if (!supabase || !canManageCertificados || !certificadoId) return null;
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    const updatePayload = {
+      numero: cleanText(payload.numero),
+      vecino_nombre: normalizeTitular(payload.vecinoNombre),
+      dni: cleanText(payload.dni),
+      domicilio: cleanText(payload.domicilio),
+      barrio: cleanText(payload.barrio),
+      padron_catastral: cleanText(payload.padronCatastral),
+      matricula_catastral: cleanText(payload.matriculaCatastral),
+      propietario_legal: cleanText(payload.propietarioLegal),
+      telefono: normalizePhone(payload.telefono),
+      motivo: cleanText(payload.motivo) || "Constancia de tenencia precaria",
+      presentado_ante: cleanText(payload.presentadoAnte),
+      estado: cleanText(payload.estado) || "pendiente",
+      fecha_visita: payload.fechaVisita || null,
+      observaciones: cleanText(payload.observaciones),
+      agente_nombre: cleanText(payload.agenteNombre) || activeUser?.nombre || "Emmanuel Aguilar",
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: updated, error: updateError } = await supabase
+      .from(CERTIFICADOS_TABLE)
+      .update(updatePayload)
+      .eq("id", certificadoId)
+      .select("*")
+      .single();
+
+    setSaving(false);
+
+    if (updateError) {
+      setError(`No se pudo actualizar la constancia: ${updateError.message}`);
+      return null;
+    }
+
+    const normalized = normalizeCertificadoRecord(updated);
+    setCertificados((prev) => prev.map((cert) => cert.id === certificadoId ? normalized : cert));
+    setNotice("Constancia actualizada correctamente.");
+    return normalized;
+  }
+
+
+  async function deleteCertificado(certificadoId) {
+    if (!supabase || !canManageCertificados || !certificadoId) return false;
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    const { error: deleteError } = await supabase
+      .from(CERTIFICADOS_TABLE)
+      .delete()
+      .eq("id", certificadoId);
+
+    setSaving(false);
+
+    if (deleteError) {
+      setError(`No se pudo eliminar la constancia: ${deleteError.message}`);
+      return false;
+    }
+
+    setCertificados((prev) => prev.filter((cert) => cert.id !== certificadoId));
+    setArchivosByCertificado((prev) => {
+      const next = { ...prev };
+      delete next[certificadoId];
+      return next;
+    });
+    setNotice("Certificado eliminado correctamente.");
+    return true;
+  }
+
+  async function deleteCertificadoFile(certificadoId, file) {
+    if (!supabase || !canManageCertificados || !certificadoId || !file?.id) return false;
+    setDeletingCertificadoFileId(String(file.id));
+    setError("");
+    setNotice("");
+
+    try {
+      if (file.archivoPath) {
+        const { error: storageError } = await supabase.storage
+          .from(CERTIFICADOS_BUCKET)
+          .remove([file.archivoPath]);
+
+        if (storageError) {
+          throw new Error(`No se pudo eliminar el archivo del storage: ${storageError.message}`);
+        }
+      }
+
+      const { error: deleteError } = await supabase
+        .from(CERTIFICADOS_ARCHIVOS_TABLE)
+        .delete()
+        .eq("id", file.id);
+
+      if (deleteError) {
+        throw new Error(`No se pudo eliminar el registro del archivo: ${deleteError.message}`);
+      }
+
+      const refreshed = await fetchCertificadoArchivosIndex([certificadoId]);
+      if (refreshed.error) throw new Error(refreshed.error.message);
+
+      setArchivosByCertificado((prev) => ({
+        ...prev,
+        [certificadoId]: refreshed.data[certificadoId] || [],
+      }));
+      setNotice("Archivo eliminado correctamente.");
+      return true;
+    } catch (err) {
+      setError(err.message || "No se pudo eliminar el archivo.");
+      return false;
+    } finally {
+      setDeletingCertificadoFileId("");
+    }
+  }
+
+  async function uploadCertificadoFiles(certificadoId, files) {
+    if (!supabase || !canManageCertificados || !certificadoId || !files?.length) return;
+    const invalidFile = files.find((file) => !isAllowedPlanoFile(file));
+    if (invalidFile) {
+      setError("Formato no permitido. Subí PDF, JPG, PNG, WEBP, DOC, DOCX, XLS, XLSX o CSV.");
+      return;
+    }
+
+    const oversized = files.find((file) => file.size > MAX_PLANO_FILE_SIZE_MB * 1024 * 1024);
+    if (oversized) {
+      setError(`El archivo ${oversized.name} supera el límite de ${MAX_PLANO_FILE_SIZE_MB} MB.`);
+      return;
+    }
+
+    setUploadingCertificadoId(String(certificadoId));
+    setError("");
+    setNotice("");
+
+    try {
+      for (const file of files) {
+        const extension = getFileExtension(file.name) || "bin";
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "_");
+        const filePath = `${certificadoId}/${Date.now()}-${safeName || `archivo.${extension}`}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(CERTIFICADOS_BUCKET)
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type || undefined,
+          });
+
+        if (uploadError) {
+          throw new Error(`No se pudo subir ${file.name}: ${uploadError.message}`);
+        }
+
+        const { error: insertError } = await supabase.from(CERTIFICADOS_ARCHIVOS_TABLE).insert({
+          certificado_id: certificadoId,
+          archivo_path: filePath,
+          nombre_original: file.name,
+          tipo_mime: file.type || null,
+          tamano_bytes: Number(file.size || 0),
+          uploaded_by: activeUser?.nombre || null,
+          created_at: new Date().toISOString(),
+        });
+
+        if (insertError) {
+          throw new Error(`El archivo se subió, pero no se pudo registrar: ${insertError.message}`);
+        }
+      }
+
+      const refreshed = await fetchCertificadoArchivosIndex([certificadoId]);
+      if (refreshed.error) throw new Error(refreshed.error.message);
+      setArchivosByCertificado((prev) => ({ ...prev, [certificadoId]: refreshed.data[certificadoId] || [] }));
+      setNotice("Archivo/documentación cargada correctamente.");
+    } catch (err) {
+      setError(err.message || "No se pudieron subir los archivos de la constancia.");
+    } finally {
+      setUploadingCertificadoId("");
+    }
   }
 
   async function addExpediente(form) {
@@ -1636,6 +3358,13 @@ export default function App() {
     setSaving(true);
     setError("");
     setNotice("");
+
+    const duplicatedPadron = findDuplicatePadron(data, form.padronNumero);
+    if (duplicatedPadron) {
+      setError(`No se creó el expediente: el padrón ${cleanText(form.padronNumero)} ya existe en ${duplicatedPadron.num || "otro expediente"} (${duplicatedPadron.titular || "sin titular"}).`);
+      setSaving(false);
+      return;
+    }
 
     const payload = {
       numero_expediente: nextExpedienteNumber(data),
@@ -1702,6 +3431,15 @@ export default function App() {
 
   function saveExpedienteField(expedienteId, partial) {
     if (!canEdit) return;
+
+    if (Object.prototype.hasOwnProperty.call(partial, "padronNumero")) {
+      const duplicatedPadron = findDuplicatePadron(data, partial.padronNumero, expedienteId);
+      if (duplicatedPadron) {
+        setError(`No se guardó el cambio: el padrón ${cleanText(partial.padronNumero)} ya existe en ${duplicatedPadron.num || "otro expediente"} (${duplicatedPadron.titular || "sin titular"}).`);
+        return;
+      }
+    }
+
     setData((prev) => prev.map((item) => (item.id === expedienteId ? { ...item, ...partial } : item)));
     setModalItem((prev) => (prev && prev.id === expedienteId ? { ...prev, ...partial } : prev));
 
@@ -1765,8 +3503,9 @@ export default function App() {
           archivo_path: filePath,
           nombre_original: file.name,
           tipo_mime: file.type || null,
-          tamano_bytes: file.size || 0,
+          tamano_bytes: Number(file.size || 0),
           uploaded_by: activeUser?.nombre || null,
+          created_at: new Date().toISOString(),
         };
 
         const { error: planoInsertError } = await supabase.from(PLANOS_TABLE).insert(metadataPayload);
@@ -2046,12 +3785,14 @@ export default function App() {
         return;
       }
 
-      const incomingDnis = [...new Set(filtered.map((row) => normalizeDni(row.dni)).filter(Boolean))];
       const { data: existingRows, error: existingError } = await supabase
         .from("expedientes")
         .select("dni, titular, padron_numero");
       if (existingError) throw existingError;
 
+      const existingPadronSet = new Set(
+        (existingRows || []).map((row) => normalizePadron(row.padron_numero)).filter(Boolean)
+      );
       const existingDniSet = new Set(
         (existingRows || []).map((row) => normalizeDni(row.dni)).filter(Boolean)
       );
@@ -2062,14 +3803,24 @@ export default function App() {
           .filter(Boolean)
       );
 
+      const seenBatchPadrones = new Set();
       const seenBatchDnis = new Set();
       const seenBatchFallbackKeys = new Set();
       const deduped = [];
       let ignoredDuplicates = 0;
 
       for (const row of filtered) {
+        const padron = normalizePadron(row.padronNumero);
         const dni = normalizeDni(row.dni);
         const fallbackKey = !dni ? buildDuplicateKey(row) : "";
+
+        if (padron) {
+          if (existingPadronSet.has(padron) || seenBatchPadrones.has(padron)) {
+            ignoredDuplicates += 1;
+            continue;
+          }
+          seenBatchPadrones.add(padron);
+        }
 
         if (dni) {
           if (existingDniSet.has(dni) || seenBatchDnis.has(dni)) {
@@ -2095,7 +3846,7 @@ export default function App() {
       if (!deduped.length) {
         setImportSummary({ totalFiles: importFiles.length, totalRows: 0, ignoredDuplicates, details });
         setImportFiles([]);
-        setNotice(`No se cargaron expedientes nuevos. Se ignoraron ${ignoredDuplicates} repetidos por DNI o por titular + padrón.`);
+        setNotice(`No se cargaron expedientes nuevos. Se ignoraron ${ignoredDuplicates} repetidos por padrón, DNI o titular + padrón.`);
         setActiveNav("Expedientes");
         setImportingExcel(false);
         await loadInitialData(true);
@@ -2143,7 +3894,7 @@ export default function App() {
       await loadInitialData(true);
       setImportSummary({ totalFiles: importFiles.length, totalRows: insertedCount, ignoredDuplicates, details });
       setImportFiles([]);
-      setNotice(`Importación completada. Se cargaron ${insertedCount} expedientes y se ignoraron ${ignoredDuplicates} repetidos por DNI o por titular + padrón.`);
+      setNotice(`Importación completada. Se cargaron ${insertedCount} expedientes y se ignoraron ${ignoredDuplicates} repetidos por padrón, DNI o titular + padrón.`);
       setActiveNav("Expedientes");
     } catch (err) {
       setError(`No se pudo importar el Excel: ${err.message}`);
@@ -2190,9 +3941,15 @@ export default function App() {
     return d;
   }, [data, search, fEstado, fArea, fPrioridad, fBarrio, fCompletitud, usersMap, sortOrder, planosByExpediente]);
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
+  const pageSize = useMemo(() => {
+    const estimatedAvailable = viewportHeight - 320;
+    const estimatedRows = Math.floor(estimatedAvailable / 78);
+    return Math.max(MIN_PAGE_SIZE, Math.min(MAX_PAGE_SIZE, estimatedRows || MIN_PAGE_SIZE));
+  }, [viewportHeight]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
   const currentPage = Math.min(page, totalPages);
-  const slice = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const slice = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const modalSequence = filtered;
   const modalIndex = modalItem ? modalSequence.findIndex((item) => item.id === modalItem.id) : -1;
   const modalTotal = modalSequence.length;
@@ -2212,8 +3969,8 @@ export default function App() {
   const navItems = [
     { label: "Dashboard", icon: "⊞" },
     { label: "Expedientes", icon: "📋" },
-    { label: "Importar Excel", icon: "⇪" },
-    { label: "Nuevo expediente", icon: "＋" },
+    { label: "Constancias", icon: "📝" },
+    ...(canEdit ? [{ label: "Importar Excel", icon: "⇪" }, { label: "Nuevo expediente", icon: "＋" }] : []),
   ];
 
   const accessSyncStyle = accessSyncStatus.kind === "success"
@@ -2223,12 +3980,10 @@ export default function App() {
     : null;
 
   if (!activeUser) {
-    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} />;
+    return <LoginScreen selectedUserId={selectedLoginUserId} onSelectUser={setSelectedLoginUserId} onIngresar={handleLogin} loginLoading={loginLoading} loginError={loginError} loginPassword={loginPassword} onPasswordChange={setLoginPassword} onOpenChangePassword={() => { setPasswordModalMode("change"); setPasswordModalError(""); setPasswordModalOpen(true); }} onOpenManualReset={() => { setPasswordModalMode("reset"); setPasswordModalError(""); setPasswordModalOpen(true); }} />;
   }
 
   return (
-    <>
-      <div style={{ position: "fixed", top: 10, right: 10, background: "#dc2626", color: "#fff", padding: "6px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,.15)" }}>BUILD VERCEL TEST</div>
     <div style={{ margin: 0, fontFamily: "Segoe UI, sans-serif", background: C.bg, color: C.text, minHeight: "100vh", width: "100%", overflowX: "hidden" }}>
       <div style={{ display: "flex", minHeight: "100vh", width: "100%" }}>
         <aside style={{ width: sidebarOpen ? 182 : 74, background: "#fff", borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh" }}>
@@ -2256,67 +4011,35 @@ export default function App() {
           </div>
         </aside>
 
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
-            width: `calc(100vw - ${sidebarOpen ? 196 : 82}px)`,
-            maxWidth: `calc(100vw - ${sidebarOpen ? 196 : 82}px)`,
-            overflow: "hidden",
-            boxSizing: "border-box",
-          }}
-        >
-          <header
-            style={{
-              background: "#fff",
-              borderBottom: `1px solid ${C.border}`,
-              padding: "12px clamp(14px, 1.8vw, 24px)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              width: "100%",
-              minWidth: 0,
-              boxSizing: "border-box",
-            }}
-          >
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, width: "100%", maxWidth: "none" }}>
+          <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, padding: "12px clamp(14px, 1.8vw, 24px)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%", boxSizing: "border-box" }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 700 }}>{activeNav}</div>
-              <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Dirección de Regularización Dominial • Base conectada a Supabase</div>
+              <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Dirección de Regularización Dominial • </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${C.border}`, background: "#f8fafc", color: C.slate, fontSize: 13, fontWeight: 600 }}>{activeUser.nombre} · {activeUser.rol}</div>
-              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
+              <button onClick={() => { setActiveUser(null); setSelectedLoginUserId(LOGIN_USERS[0].id); setActiveNav("Dashboard"); setLoginError(""); setLoginPassword(""); setNotice(""); setAccessSyncStatus({ kind: "", text: "" }); }} style={btnGhost}>Salir</button>
               <div style={{ fontSize: 13, color: C.muted }}>{fechaActual}</div>
               <button onClick={() => loadInitialData(true)} style={btnGhost}>{refreshing ? "Actualizando..." : "Actualizar"}</button>
+              {activeUser?.canEdit ? <button onClick={() => { setPasswordModalMode("change"); setPasswordModalError(""); setPasswordModalOpen(true); }} style={btnGhost}>Cambiar contraseña</button> : null}
+              {canEdit ? <button onClick={() => { setPasswordModalMode("reset"); setPasswordModalError(""); setPasswordModalOpen(true); }} style={btnGhost}>Reset manual admin</button> : null}
               {canEdit ? <button onClick={() => setNuevoOpen(true)} style={btnPrimary}>+ Nuevo expediente</button> : null}
             </div>
           </header>
 
-          <main
-            style={{
-              flex: 1,
-              padding: "16px 16px 20px",
-              width: "100%",
-              minWidth: 0,
-              maxWidth: "100%",
-              boxSizing: "border-box",
-              overflowX: "hidden",
-              overflowY: "auto",
-            }}
-          >
+          <main style={{ flex: 1, padding: "14px 14px 10px", width: "100%", maxWidth: "none", boxSizing: "border-box", overflowX: "hidden" }}>
             {error ? <div style={{ marginBottom: 16, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{error}</div> : null}
-            {notice ? <div style={{ marginBottom: 16, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{notice}</div> : null}
-            {accessSyncStyle ? <div style={{ ...accessSyncStyle, marginBottom: 16, borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>{accessSyncStatus.text}</div> : null}
             {!canEdit ? <div style={{ marginBottom: 16, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 12, padding: "12px 14px", fontSize: 13 }}>Usuario en modo solo lectura. Este perfil no puede crear, editar, importar ni eliminar expedientes.</div> : null}
 
             {loading ? (
               <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}` }}><EmptyBlock title="Cargando datos del sistema" text="Esperando respuesta de Supabase para usuarios y expedientes." /></div>
             ) : activeNav === "Dashboard" ? (
+              activeUser?.id === "gonzalo-monteros" ? (
+                <IntendenteDashboard data={data} />
+              ) : (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
                   {[["Expedientes únicos", stats.total, "Mostrados en el panel"], ["Completos", stats.completos, "Con datos y adjuntos"], ["En proceso", stats.proceso, "Seguimiento activo"], ["Casos críticos", stats.criticos, "Prioridad crítica"], ["Atrasados (+14d)", stats.atrasados, "Requieren revisión"]].map(([label, value, note]) => (
                     <div key={label} style={{ background: "#fff", border: `1px solid ${C.border}`, padding: "14px 18px", borderRadius: 16 }}>
                       <div style={{ fontSize: 11, color: C.muted }}>{label}</div>
@@ -2325,7 +4048,7 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, marginTop: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginTop: 14 }}>
                   <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
                     <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>Ingreso actual</div>
                     <div style={{ marginTop: 12, fontSize: 18, fontWeight: 800 }}>{activeUser.nombre}</div>
@@ -2340,18 +4063,33 @@ export default function App() {
                   <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 18 }}>
                     <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>Importación masiva lista</div>
                     <div style={{ marginTop: 10, color: C.muted, fontSize: 13, lineHeight: 1.55 }}>Ya podés subir varios Excel desde el panel. El barrio se toma del nombre del archivo y la carga va directo a Supabase.</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginTop: 16 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 16 }}>
                       <div style={{ background: C.softBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}><div style={{ fontWeight: 700, fontSize: 13, color: C.indigo }}>Campos nuevos</div><div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>estado_civil<br />telefono<br />padron_numero<br />plano_url<br />notas</div></div>
                       <div style={{ background: C.softBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 }}><div style={{ fontWeight: 700, fontSize: 13, color: C.indigo }}>Cobertura actual</div><div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>Con plano: {data.filter((d) => (planosByExpediente[d.id] || []).length > 0 || cleanText(d.planoUrl)).length}<br />Con padrón: {data.filter((d) => cleanText(d.padronNumero)).length}<br />Con estado civil: {data.filter((d) => cleanText(d.estadoCivil)).length}<br />Usuarios cargados: {users.length}</div></div>
                     </div>
                   </div>
                 </div>
               </>
+              )
+            ) : activeNav === "Constancias" ? (
+              <CertificadosSection
+                certificados={certificados}
+                archivosByCertificado={archivosByCertificado}
+                canManageCertificados={canManageCertificados}
+                activeUser={activeUser}
+                onCreate={createCertificado}
+                onSave={saveCertificado}
+                onDelete={deleteCertificado}
+                onUploadFiles={uploadCertificadoFiles}
+                onDeleteFile={deleteCertificadoFile}
+                uploadingCertificadoId={uploadingCertificadoId}
+                deletingCertificadoFileId={deletingCertificadoFileId}
+              />
             ) : activeNav === "Importar Excel" ? (
               <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}`, padding: 22 }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: C.slate }}>Importar archivos Excel</div>
                 <div style={{ marginTop: 8, color: C.muted, fontSize: 13, lineHeight: 1.55 }}>Podés subir varios archivos .xlsx o .xls. El sistema toma el barrio desde el nombre del archivo y carga directo a Supabase. Los DNI repetidos se ignoran automáticamente.</div>
-                <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+                <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
                   <div style={{ border: `1px dashed ${C.border}`, borderRadius: 16, padding: 20, background: "#f8fafc" }}>
                     <div style={{ fontWeight: 700, color: C.slate }}>Carga directa</div>
                     <div style={{ marginTop: 8, color: C.muted, fontSize: 13, lineHeight: 1.65 }}>1. Seleccionás varios Excel<br />2. El sistema detecta columnas útiles<br />3. Limpia datos<br />4. Inserta todo en Supabase sin vista previa</div>
@@ -2379,17 +4117,7 @@ export default function App() {
               </div>
             ) : (
               <>
-                <div
-                  style={{
-                    background: "#fff",
-                    borderRadius: 16,
-                    border: `1px solid ${C.border}`,
-                    overflow: "hidden",
-                    width: "100%",
-                    maxWidth: "100%",
-                    boxSizing: "border-box",
-                  }}
-                >
+                <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden", width: "100%", boxSizing: "border-box" }}>
                   <div style={{ padding: "14px 18px", borderBottom: "1px solid #f1f5f9" }}>
                     <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
                       <div style={{ position: "relative", flex: 1, minWidth: 170 }}>
@@ -2443,33 +4171,24 @@ export default function App() {
                     ) : null}
                   </div>
 
-                  <div
-                    style={{
-                      width: "100%",
-                      maxWidth: "100%",
-                      overflowX: "auto",
-                      overflowY: "auto",
-                      maxHeight: "calc(100vh - 265px)",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1640, fontSize: 11, tableLayout: "fixed" }}>
+                  <div style={{ overflowX: "auto", overflowY: "visible", width: "100%" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1800, fontSize: 11, tableLayout: "fixed" }}>
                       <colgroup>
                         {TABLE_COLGROUP.map((col) => <col key={col.key} style={{ width: col.width }} />)}
                       </colgroup>
                       <thead>
                         <tr style={{ borderBottom: "1px solid #f1f5f9", background: "#fafafa", position: "sticky", top: 0, zIndex: 2 }}>
-                          {["✓", "N° Expediente", "Titular", "DNI", "Contacto", "Estado civil", "Barrio", "N° de padrón", "Archivos", "Estado", "Área", "Ubicación", "Notas", "Acciones"].map((h) => <th key={h} style={{ padding: "7px 6px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: ".05em", background: "#fafafa", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h}</th>)}
+                          {EXPEDIENTES_TABLE_HEADERS.map((h) => <th key={h} style={{ padding: "7px 6px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: ".05em", background: "#fafafa", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h}</th>)}
                         </tr>
                       </thead>
                       <tbody>
-                        {slice.length === 0 ? <tr><td colSpan={14}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp) => <ExpedienteRow key={exp.id} exp={exp} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} />)}
+                        {slice.length === 0 ? <tr><td colSpan={EXPEDIENTES_TABLE_HEADERS.length}><EmptyBlock title="No se encontraron expedientes" text="Ajustá los filtros o cargá el primer expediente." /></td></tr> : slice.map((exp, rowIndex) => <ExpedienteRow key={exp.id} exp={exp} rowIndex={rowIndex} users={users} usersMap={usersMap} onSaveField={saveExpedienteField} onOpen={setModalItem} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} deletingPlanoId={deletingPlanoId} uploadingPlano={uploadingPlanoId === String(exp.id)} savingField={savingField} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[exp.id] || []} selected={selectedExpedientes.includes(exp.id)} onToggleSelect={toggleSelectExpediente} existingExpedientes={data} onDuplicatePadron={(value, duplicated) => setError(`No se guardó el cambio: el padrón ${cleanText(value)} ya existe en ${duplicated.num || "otro expediente"} (${duplicated.titular || "sin titular"}).`)} />)}
                       </tbody>
                     </table>
                   </div>
 
                   <div style={{ padding: "12px 18px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 12, color: C.muted }}>Mostrando {filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} a {Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length} registros únicos • Seleccionados: {selectedExpedientes.length} • Filas totales en base: {rawRowCount} • Duplicados ocultos: {hiddenDuplicateCount} • Página {currentPage} de {totalPages}</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>Mostrando {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} a {Math.min(currentPage * pageSize, filtered.length)} de {filtered.length} registros únicos • Seleccionados: {selectedExpedientes.length} • Filas totales en base: {rawRowCount} • Duplicados ocultos: {hiddenDuplicateCount} • Página {currentPage} de {totalPages}</div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <button onClick={() => setPage(1)} style={btnGhost} disabled={currentPage === 1}>Primera</button>
                       <button onClick={() => setPage((p) => Math.max(1, p - 1))} style={btnGhost} disabled={currentPage === 1}>Anterior</button>
@@ -2502,9 +4221,9 @@ export default function App() {
         </div>
       </div>
 
-      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} />
-      <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} />
+      <ModalExpediente item={modalItem} users={users} usersMap={usersMap} onClose={() => setModalItem(null)} onSaveField={saveExpedienteField} savingField={savingField} onUploadPlano={uploadPlanoFile} onDeletePlano={deletePlanoFile} uploadingPlano={uploadingPlanoId === String(modalItem?.id)} deletingPlanoId={deletingPlanoId} canEdit={canEdit} onDelete={deleteExpediente} planos={planosByExpediente[modalItem?.id] || []} onNext={modalIndex >= 0 && modalIndex < modalTotal - 1 ? openNextExpediente : null} modalIndex={modalIndex} modalTotal={modalTotal} activeUser={activeUser} observacionesIntendente={observacionesByExpediente[modalItem?.id] || []} onAddObservacionIntendente={addObservacionIntendente} addingObservacionIntendente={addingObservacionIntendente} existingExpedientes={data} onDuplicatePadron={(value, duplicated) => setError(`No se guardó el cambio: el padrón ${cleanText(value)} ya existe en ${duplicated.num || "otro expediente"} (${duplicated.titular || "sin titular"}).`)} />
+      <PasswordAdminModal open={passwordModalOpen} mode={passwordModalMode} selectedUserId={passwordModalMode === "change" ? (activeUser?.id || selectedLoginUserId) : selectedLoginUserId} onClose={() => { setPasswordModalOpen(false); setPasswordModalError(""); }} onSubmit={handlePasswordAction} loading={passwordModalLoading} error={passwordModalError} />
+      <NuevoExpedienteModal open={nuevoOpen} onClose={() => setNuevoOpen(false)} onSave={addExpediente} saving={saving} users={users} existingExpedientes={data} />
     </div>
-    </>
   );
 }
